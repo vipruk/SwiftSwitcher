@@ -18,6 +18,21 @@ fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/corpus")
 }
 
+/// Replaces typographic punctuation with what a keyboard user types instead.
+fn normalize(tok: &str) -> String {
+    let mut out = String::with_capacity(tok.len());
+    for c in tok.chars() {
+        match c {
+            '«' | '»' | '“' | '”' | '„' => out.push('"'),
+            '’' | '‘' => out.push('\''),
+            '—' | '–' => out.push('-'),
+            '…' => out.push_str("..."),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Strokes that type `tok` in `layout`, or `None` if some char has no key there.
 fn typed(tok: &str, layout: Layout) -> Option<Vec<Stroke>> {
     tok.chars().map(|c| stroke_for(c, layout)).collect()
@@ -58,11 +73,21 @@ impl Stats {
     }
 }
 
-/// Runs precision and recall over whitespace-separated tokens of `text`, all in `lang`.
+/// Types a token in `lang`, or in the other layout if it can only be typed there
+/// (Latin names inside Russian text, Cyrillic abbreviations inside tech text).
+fn type_token(tok: &str, lang: Layout) -> Option<(Vec<Stroke>, Layout)> {
+    [lang, lang.other()]
+        .into_iter()
+        .find_map(|l| typed(tok, l).map(|s| (s, l)))
+}
+
+/// Runs precision and recall over whitespace-separated tokens of a text in `lang`.
 fn evaluate<'a>(tokens: impl Iterator<Item = &'a str>, lang: Layout) -> Stats {
     let mut st = Stats::default();
     for tok in tokens {
-        let Some(strokes) = typed(tok, lang) else {
+        let tok = normalize(tok);
+        let tok = tok.as_str();
+        let Some((strokes, lang)) = type_token(tok, lang) else {
             st.skipped += 1;
             continue;
         };
@@ -87,6 +112,7 @@ fn sample(file: &str, lang: Layout) -> Stats {
     let text = fs::read_to_string(corpus_dir().join(file)).unwrap();
     let st = evaluate(text.split_whitespace(), lang);
     st.print(file);
+    assert!(st.skipped <= 2, "{file}: {} tokens skipped", st.skipped);
     st
 }
 
@@ -110,24 +136,22 @@ fn no_false_corrections_sample_ru() {
     );
 }
 
-/// The tech corpus is typed in `En`; the few Cyrillic tokens (RU abbreviations) are typed in `Ru`.
+/// The tech corpus is typed in `En`; Cyrillic tokens (RU abbreviations) fall back to `Ru`.
 #[test]
 fn no_false_corrections_tech() {
     let text = fs::read_to_string(corpus_dir().join("tech.txt")).unwrap();
     let mut tokens = 0;
     let mut skipped = 0;
     let mut offenders = Vec::new();
-    for tok in text.split_whitespace() {
-        let Some((strokes, lang)) = [Layout::En, Layout::Ru]
-            .into_iter()
-            .find_map(|l| typed(tok, l).map(|s| (s, l)))
-        else {
+    for tok in text.split_whitespace().map(normalize) {
+        let tok = tok.as_str();
+        let Some((strokes, lang)) = type_token(tok, Layout::En) else {
             skipped += 1;
             continue;
         };
         tokens += 1;
         if converts(&strokes, lang) {
-            offenders.push(tok);
+            offenders.push(tok.to_string());
         }
     }
     println!(
@@ -135,6 +159,7 @@ fn no_false_corrections_tech() {
         offenders.len()
     );
     assert!(tokens >= 300, "tech corpus too small: {tokens}");
+    assert_eq!(skipped, 0, "tech tokens without strokes");
     assert!(offenders.is_empty(), "false corrections: {offenders:?}");
 }
 
@@ -168,6 +193,12 @@ fn full_corpus_precision() {
         let st = evaluate(sentences.flat_map(str::split_whitespace), lang);
         st.print(file);
         println!("{file}: false corrections {:?}", st.false_corrections);
+        assert!(
+            st.skipped * 100 < st.tokens,
+            "{file}: {} of {} tokens skipped",
+            st.skipped,
+            st.tokens
+        );
         assert!(
             st.false_corrections.len() * 10_000 < st.tokens,
             "{file}: {} false corrections in {} tokens",
