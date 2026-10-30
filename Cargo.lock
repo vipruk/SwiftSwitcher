@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "datagen"
 version = "0.1.0"
+dependencies = [
+ "swift-engine",
+]
 
 [[package]]
 name = "swift-engine"
