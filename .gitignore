@@ -1,0 +1,10 @@
+# Local AI-assistant files (kept out of the public repo)
+CLAUDE.md
+.claude/
+docs/superpowers/
+
+# IDE
+.idea/
+
+# Local agent workspace
+.superpowers/
