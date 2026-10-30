@@ -5,18 +5,31 @@ use crate::dict::UserDict;
 use crate::keymap::{Layout, Stroke, char_for, is_letter};
 use crate::model::LangModel;
 
+/// Tuned on the corpus acceptance tests (`tests/corpus.rs`).
 pub struct Params {
+    /// Minimum letters in the other reading for any conversion.
     pub min_len: usize,
+    /// Score lead the other reading needs when it is not a known word.
     pub margin: f32,
+    /// Minimum score of the other reading when it is not a known word.
     pub floor: f32,
+    /// Score lead the other reading needs even when it is a known word, so that a
+    /// plausible typed reading (a name, an inflected form missing from the word list,
+    /// an abbreviation) is kept.
+    pub dict_margin: f32,
+    /// Minimum letters in the other reading to convert on scores alone; shorter
+    /// readings convert only when they are known words.
+    pub score_min_len: usize,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Params {
             min_len: 3,
-            margin: 2.0,
+            margin: 2.2,
             floor: -3.5,
+            dict_margin: 1.0,
+            score_min_len: 4,
         }
     }
 }
@@ -72,7 +85,48 @@ fn is_protected(text: &str) -> bool {
         .copied()
         .filter(|c| c.is_alphabetic())
         .collect();
-    !letters.is_empty() && letters.len() <= 4 && letters.iter().all(|c| c.is_uppercase())
+    // One letter repeated (ыыы, zzz) is an interjection or filler, not a word.
+    if letters.len() >= 2
+        && letters
+            .iter()
+            .all(|c| c.to_lowercase().eq(letters[0].to_lowercase()))
+    {
+        return true;
+    }
+    let upper = letters.iter().filter(|c| c.is_uppercase()).count();
+    // Acronyms of any length (РСФСР, NASDAQ) and short tokens with two or more
+    // capitals (units and plurals: ГГц, IDs) are kept.
+    (!letters.is_empty() && upper == letters.len()) || (letters.len() <= 4 && upper >= 2)
+}
+
+/// Physical key rows of the main block, as ranges of consecutive key codes.
+const KEY_ROWS: [std::ops::RangeInclusive<u16>; 4] = [2..=13, 16..=27, 30..=40, 44..=53];
+
+/// Shortest run of neighbouring keys on one row that counts as a keyboard walk.
+const WALK_LEN: usize = 5;
+
+/// True if the strokes contain a run of `WALK_LEN` neighbouring keys of one row
+/// in either direction (zxcvbnm, qwert, йцукен): a password or filler, read
+/// as plausible text in neither layout.
+fn is_keyboard_walk(strokes: &[Stroke]) -> bool {
+    let row = |code: u16| KEY_ROWS.iter().position(|r| r.contains(&code));
+    let mut run = 1;
+    let mut dir = 0;
+    for w in strokes.windows(2) {
+        let step = i32::from(w[1].code) - i32::from(w[0].code);
+        let neighbours =
+            step.abs() == 1 && row(w[0].code).is_some_and(|r| row(w[1].code) == Some(r));
+        run = match (neighbours, step == dir) {
+            (false, _) => 1,
+            (true, true) => run + 1,
+            (true, false) => 2,
+        };
+        dir = step;
+        if run >= WALK_LEN {
+            return true;
+        }
+    }
+    false
 }
 
 const CONTRACTION_TAILS: [&str; 7] = ["s", "t", "d", "ll", "re", "ve", "m"];
@@ -109,7 +163,7 @@ pub fn decide(strokes: &[Stroke], typed_in: Layout, dict: &UserDict, p: &Params)
     if listed(&dict.never) {
         return Verdict::Keep(Reason::InUserNever);
     }
-    if is_protected(&typed) {
+    if is_protected(&typed) || is_keyboard_walk(strokes) {
         return Verdict::Keep(Reason::Protected);
     }
 
@@ -131,12 +185,15 @@ pub fn decide(strokes: &[Stroke], typed_in: Layout, dict: &UserDict, p: &Params)
     }
 
     let other_lower = other_core.to_lowercase();
-    if other_model.contains(&other_lower) {
-        return Verdict::Convert;
-    }
     let score_other = other_model.score(&other_lower);
     let score_typed = typed_model.score(&typed_core);
-    if score_other >= p.floor && score_other - score_typed >= p.margin {
+    if other_model.contains(&other_lower) && score_other - score_typed >= p.dict_margin {
+        return Verdict::Convert;
+    }
+    if other_lower.chars().count() >= p.score_min_len
+        && score_other >= p.floor
+        && score_other - score_typed >= p.margin
+    {
         Verdict::Convert
     } else {
         Verdict::Keep(Reason::OtherNotPlausible)
@@ -195,6 +252,76 @@ mod tests {
             "a/b",
         ] {
             assert_eq!(run(w, Layout::En), Verdict::Keep(Reason::Protected), "{w}");
+        }
+    }
+
+    #[test]
+    fn protects_acronyms_and_units() {
+        // Pre-tuning false corrections from the Leipzig RU corpus: РСФСР -> HCACH, ГГц -> UUw.
+        for w in ["РСФСР", "РСФСР,", "ГГц", "ГГц).", "NASDAQ", "IDs"] {
+            let l = if w.is_ascii() { Layout::En } else { Layout::Ru };
+            assert_eq!(run(w, l), Verdict::Keep(Reason::Protected), "{w}");
+        }
+        // Sentence-initial capitals are still converted.
+        assert_eq!(run("Ghbdtn", Layout::En), Verdict::Convert);
+    }
+
+    #[test]
+    fn protects_repeated_letter() {
+        // ыыы -> sss was a false correction (sss is in the EN word list).
+        for (w, l) in [
+            ("ыыы", Layout::Ru),
+            ("Ыыы!", Layout::Ru),
+            ("zzz", Layout::En),
+        ] {
+            assert_eq!(run(w, l), Verdict::Keep(Reason::Protected), "{w}");
+        }
+    }
+
+    #[test]
+    fn protects_keyboard_walks() {
+        // zxcvbnm -> ячсмить was a false correction; walks are typical passwords.
+        for (w, l) in [
+            ("zxcvbnm", Layout::En),
+            ("qwert", Layout::En),
+            ("trewq", Layout::En),
+            ("asdfg", Layout::En),
+            ("ячсмить", Layout::Ru),
+        ] {
+            assert_eq!(run(w, l), Verdict::Keep(Reason::Protected), "{w}");
+        }
+        // Four neighbours are not a walk; a direction change restarts the run.
+        assert!(!is_keyboard_walk(&typed("asdf", Layout::En)));
+        assert!(!is_keyboard_walk(&typed("asdsa", Layout::En)));
+        assert_eq!(run("ghbdtn", Layout::En), Verdict::Convert);
+    }
+
+    #[test]
+    fn known_word_needs_dict_margin() {
+        // Plausible RU/EN typed readings whose other reading is a known word were
+        // converted before tuning: мск -> vcr, Уфе -> Eat, кум -> rev, Nth -> Тер.
+        for (w, l) in [
+            ("мск", Layout::Ru),
+            ("Уфе", Layout::Ru),
+            ("кум", Layout::Ru),
+            ("утв.", Layout::Ru),
+            ("Nth", Layout::En),
+        ] {
+            assert_eq!(run(w, l), Verdict::Keep(Reason::OtherNotPlausible), "{w}");
+        }
+        assert_eq!(run("rfr", Layout::En), Verdict::Convert);
+        assert_eq!(run("xnj", Layout::En), Verdict::Convert);
+    }
+
+    #[test]
+    fn short_non_words_are_not_scored() {
+        // dnf -> вта was converted on trigram scores alone.
+        for w in ["dnf", "jwt"] {
+            assert_eq!(
+                run(w, Layout::En),
+                Verdict::Keep(Reason::OtherNotPlausible),
+                "{w}"
+            );
         }
     }
 

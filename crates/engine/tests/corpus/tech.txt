@@ -1,0 +1,31 @@
+git status git add git commit -m git push origin main git pull --rebase git log --oneline git diff HEAD~1 git stash pop git checkout -b feat/login git rebase -i git cherry-pick git fetch upstream git merge --no-ff git tag v1.2.0 git reset --hard
+npm install npm run dev npm ci npx vite pnpm yarn node nodejs webpack eslint prettier tsconfig.json package.json package-lock.json
+apt update sudo apt install -y build-essential sudo systemctl restart nginx systemctl status journalctl -u nginx -f dmesg lsblk lsusb lspci
+ssh root@10.0.0.5 ssh -p 2222 deploy@prod scp rsync -avz curl -sSL wget https://example.com/install.sh curl -X POST -H "Content-Type: application/json"
+docker ps docker compose up -d docker-compose.yml Dockerfile docker exec -it docker logs --tail=100 docker build -t app:latest podman
+kubectl get pods kubectl describe pod kubectl logs -f kubectl apply -f deployment.yaml kubectl rollout status helm upgrade --install minikube kubeconfig argocd k8s
+php artisan migrate php artisan tinker composer install composer require laravel/framework laravel symfony artisan eloquent blade livewire phpunit phpstan xdebug
+cargo build cargo test --workspace cargo clippy cargo fmt rustc rustup Cargo.toml Cargo.lock main.rs lib.rs mod.rs src/main.rs
+python3 pip install -r requirements.txt venv pytest django flask fastapi uvicorn gunicorn celery numpy pandas
+index.php config.yaml config.php routes.php web.php .env .env.example .gitignore README.md CHANGELOG.md Makefile makefile justfile docker-compose.override.yml settings.json tsconfig.json vite.config.ts
+/etc/nginx/nginx.conf /var/log/syslog ~/.bashrc ~/.config/swiftswitcher/config.toml /usr/local/bin ./build.sh ../src C:\Users\admin
+https://github.com/vipruk/SwiftSwitcher http://localhost:8080 localhost:3000 127.0.0.1 0.0.0.0 api.example.com mail.yandex.ru habr.com stackoverflow.com
+admin@example.com support@company.ru dev.team@mail.ru
+user_id created_at updated_at getUserById setTimeout useState onClick isEnabled MAX_RETRIES DEFAULT_TIMEOUT camelCase snake_case PascalCase __init__ self.name this.state $this->model $request $user
+grep -rn sed -i awk xargs chmod +x chown -R mkdir -p rm -rf ls -la cd pwd cat less head tail -f wc -l sort uniq diff tar -xzf gzip unzip zip
+vim nvim nano htop btop tmux zsh bash fish gnome kde xorg wayland evdev uinput dbus gsettings dconf flatpak snap dnf pacman brew
+nginx apache redis postgres psql mysql mariadb mongo sqlite sqlite3 rabbitmq kafka elasticsearch kibana grafana prometheus sentry
+gcc clang llvm gdb lldb valgrind strace lsof netstat ip ifconfig ping traceroute dig nslookup whoami uname df du top ps kill pkill
+terraform ansible vagrant jenkins gitlab github bitbucket jira confluence slack zoom figma phpstorm vscode intellij
+vue nuxt nextjs react redux axios lodash jquery bootstrap tailwind sass scss graphql grpc protobuf websocket oauth jwt
+ok ok! lol btw imho afaik brb thx pls np omg tbh fyi asap lgtm wip idk ty gg kk
+спб мск спс пжл кмк имхо збс нзч
+TODO FIXME XXX WIP PR MR CI CD QA UI UX API SDK CLI JSON YAML HTML CSS SQL HTTP HTTPS TCP UDP DNS SSH VPN CPU RAM SSD
+v1.0 v2.3.1 1.2.3 rc1 beta2 x86_64 aarch64 utf-8 utf8 ascii base64 sha256 md5 uuid
+sudo make tsc deno bun zig nix fzf rg fd bat eza yq kubectx k9s stern skaffold kustomize istio envoy consul vault etcd cilium pgbouncer dbeaver sqlx tokio serde anyhow thiserror clap zbus xkb setxkbmap ibus fcitx xclip xdotool ydotool iotop nmap ncdu ripgrep neofetch gparted mpv vlc gimp inkscape telegram firefox chromium nautilus alacritty kitty wezterm sway hyprland i3 waybar rofi dunst picom grub systemd udev polkit sshd sshfs nfs smb luks btrfs ext4 fstab sysctl modprobe lsmod initramfs ubuntu debian fedora manjaro nixos
+qwerty asdf qwertyuiop zxcvbn zxcvbnm qwert asdfg letmein changeme toor admin qazwsx йцукен фывапр ячсмить foo bar baz qux foobar fizzbuzz lorem ipsum dolor amet zzz xxx aaa
+privet kak dela spasibo poka davai horosho normalno ladno zavtra segodnya
+rofl lmao xD wtf smh irl afk gtg ttyl nvm ikr tldr ymmv iirc fwiw eta eod ooo pto wfh ptal sgtm nit
+кек лол ржу оч норм плз чел ваще щас типа короч прив пасиб инфа комп прога сорян ок окей хз лан кста мб чё чо пон хех ахах ахаха имба кринж рофл ору жиза хайп чекнуть пофиксить задеплоить закоммитить пушнуть ага угу неа мда хм ммм ыыы пжлст
+Пн Вт Ср Чт Пт Сб Вс янв фев авг сен окт ноя дек руб коп тыс млн млрд кг км мм см шт ул д. кв. г. обл. р-н т.е. т.к. т.д. т.п. др. стр. рис. мин. сек.
+Mon Tue Wed Thu Fri Sat Sun Jan Feb Aug Sep Oct Nov Dec etc e.g. i.e. vs. approx misc Mr. Mrs. Dr. Ltd Inc LLC kg km mph rpm dpi fps ms ns kB MB GB Hz kHz

@@ -1,0 +1,153 @@
+Hi Mark, thanks for the quick reply yesterday.
+I looked at the logs this morning and the import job failed again around midnight.
+Could you check whether the backup finished before the server restarted?
+Let's move the weekly sync to Thursday, if that works for everyone.
+I'm running a bit late, start without me please.
+Sorry, my internet dropped for a minute. What did I miss?
+The new build looks good on my machine, but staging still shows the old banner.
+Can we talk about the release plan after lunch?
+Quick question: who owns the billing service now?
+I think the problem is the cache, not the database.
+We should probably write a short note for the support team.
+Thanks a lot, that fixed it!
+Let me know when you're free, I'd like to show you something.
+Meeting notes, Monday:
+- agreed to freeze features on Friday;
+- Anna will prepare the migration checklist;
+- we still need a decision on the old reports.
+Please don't merge anything into main until the tests are green.
+I've pushed a small fix for the login page, could you review it?
+The customer says the export button does nothing in their browser.
+It works fine in Firefox, so maybe it's a Safari thing.
+Good morning everyone! Coffee is in the kitchen.
+I'll be on vacation next week, Peter will cover for me.
+Remember to update your passwords before the end of the month.
+Our office will be closed on Monday because of the holiday.
+Have a great weekend!
+Honestly, I don't remember why we added that flag.
+The documentation is out of date, I'll fix it tomorrow.
+Who broke the nightly build? Just kidding, it was me.
+Can you send me the invoice as a PDF?
+We received the payment, thank you.
+The delivery is delayed by two days, sorry for the inconvenience.
+I'm not sure this is the right approach, but let's try it.
+Let's keep it simple and ship the first version.
+The page loads slowly when the list has more than a thousand items.
+We could add pagination or load the rows lazily.
+I agree with Kate, the second option looks cleaner.
+Does anyone know the password for the test account?
+Never mind, I found it in the shared vault.
+My laptop is updating, give me ten minutes.
+The printer on the third floor is broken again.
+Dear Sir or Madam, I am writing to ask about the status of my order.
+I placed it two weeks ago and haven't received any confirmation.
+Kind regards, Valery.
+Best wishes and thank you for your patience.
+Looking forward to hearing from you.
+Please find the attached report for the last quarter.
+The numbers are slightly better than we expected.
+Sales grew in the north, while the south stayed flat.
+We need to hire another engineer before summer.
+I spoke with the recruiter, they have three candidates.
+The interview is scheduled for Wednesday at noon.
+Could you prepare a small coding task for them?
+Nothing too hard, something we can discuss in an hour.
+The train was cancelled, so I'm working from home today.
+It's raining heavily here, the streets are flooded.
+Let's grab dinner after the conference.
+I really enjoyed your talk about testing.
+The slides are online now, I'll share the link later.
+My cat walked over the keyboard and sent a message, ignore it.
+Happy birthday! Wishing you all the best.
+Congratulations on the new job, well deserved.
+Welcome to the team, we're glad you're here.
+The onboarding guide should answer most of your questions.
+Feel free to ask me anything, really.
+We use short daily calls to stay in sync.
+The repository is a bit messy, sorry about that.
+Most of the code lives in the core module.
+Tests run automatically for every pull request.
+If something fails, look at the first error, not the last one.
+I usually start the day by reading the alerts.
+Yesterday we had a spike in errors after the deploy.
+The rollback took less than five minutes.
+We still don't know the root cause.
+My guess is a race condition in the worker queue.
+I'll add more logging and wait for it to happen again.
+Please be careful with the production database.
+Always make a snapshot before running a migration.
+We lost some data last year because nobody checked.
+That was a painful lesson.
+Shopping list: milk, bread, eggs, apples, cheese, coffee.
+Don't forget to call the dentist.
+Pick up the kids from school at four.
+The car needs new tires before winter.
+I booked the hotel for three nights.
+The flight leaves early, so we should go to bed soon.
+What time does the museum open on Sunday?
+The weather was lovely, we walked along the river all afternoon.
+I finally finished the book you recommended.
+The ending surprised me, I didn't expect that at all.
+Are you watching the game tonight?
+Our team lost again, unfortunately.
+Maybe next season will be better.
+I started running in the mornings, it helps me think.
+The gym is too crowded after work.
+Could you water the plants while I'm away?
+The keys are under the mat, as usual.
+Thanks for dinner, it was delicious.
+We should do this more often.
+I've been thinking about changing jobs.
+The project is interesting, but the hours are too long.
+I want to spend more time with my family.
+What do you think about remote work?
+I like it, but I miss the office chats sometimes.
+The new manager seems nice and very organized.
+She asked everyone to write down their goals for the year.
+Mine are simple: learn something new and sleep more.
+Please confirm that you received this message.
+I'm forwarding the email from the client below.
+They want a demo next Tuesday, if possible.
+Can we make it work with the current build?
+I'd rather not promise anything we can't deliver.
+Let's be honest with them about the timeline.
+Here's the summary of today's discussion.
+First, the search feature is the top priority.
+Second, the mobile layout needs some polish.
+Third, we postpone the dark theme until autumn.
+Any objections? If not, we'll start tomorrow.
+I can't open the file, it seems to be corrupted.
+Could you send it again, maybe zipped?
+Got it, thanks. Everything opens now.
+The meeting room is booked, so let's meet in the lobby.
+I'm stuck in traffic, be there in fifteen minutes.
+The parking lot is full again.
+By the way, the coffee machine is fixed.
+Finally some good news!
+Have you tried turning it off and on again?
+Yes, twice. It still doesn't work.
+Then it's probably the power supply.
+I ordered a replacement, it should arrive on Friday.
+Our neighbors are renovating, it's very noisy.
+I'm working from the library today because of that.
+The library is quiet and the wifi is surprisingly fast.
+I'll send the draft tonight, please read it when you can.
+Feedback is welcome, even if it's harsh.
+Thanks for your comments, they were really helpful.
+I rewrote the introduction and removed the second chapter.
+It reads much better now.
+The deadline is next Monday, so we have some time.
+Let's not leave everything for the last day though.
+I'm going to the doctor tomorrow morning.
+I'll be online after eleven.
+Ping me if anything urgent comes up.
+Everything is calm today, no incidents so far.
+Good job, everyone, the release went smoothly.
+Let's celebrate on Friday, pizza is on me.
+See you tomorrow!
+Talk to you later.
+Take care and stay healthy.
+Cheers!
+One more thing: the staging server will be down tonight for maintenance.
+Please save your work before nine.
+I appreciate your help with this, seriously.
