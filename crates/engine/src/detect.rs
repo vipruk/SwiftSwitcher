@@ -99,10 +99,14 @@ pub fn decide(strokes: &[Stroke], typed_in: Layout, dict: &UserDict, p: &Params)
     };
     let typed_lower = typed.to_lowercase();
 
-    if dict.always.contains(&typed_lower) {
+    let typed_core_lower = core(&typed, typed_in).to_lowercase();
+    let listed = |set: &std::collections::HashSet<String>| {
+        set.contains(&typed_lower) || set.contains(&typed_core_lower)
+    };
+    if listed(&dict.always) {
         return Verdict::Convert;
     }
-    if dict.never.contains(&typed_lower) {
+    if listed(&dict.never) {
         return Verdict::Keep(Reason::InUserNever);
     }
     if is_protected(&typed) {
@@ -211,6 +215,21 @@ mod tests {
             Verdict::Keep(Reason::InUserNever)
         );
         let s = typed("lfnf", Layout::En);
+        assert_eq!(decide(&s, Layout::En, &d, &p), Verdict::Convert);
+    }
+
+    #[test]
+    fn user_dict_ignores_surrounding_punctuation() {
+        let p = Params::default();
+        let mut d = UserDict::default();
+        d.never.insert("ghbdtn".into());
+        d.always.insert("lfnf".into());
+        let s = typed("ghbdtn?", Layout::En);
+        assert_eq!(
+            decide(&s, Layout::En, &d, &p),
+            Verdict::Keep(Reason::InUserNever)
+        );
+        let s = typed("lfnf,", Layout::En);
         assert_eq!(decide(&s, Layout::En, &d, &p), Verdict::Convert);
     }
 }
