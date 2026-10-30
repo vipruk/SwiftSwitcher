@@ -1,0 +1,9 @@
+[package]
+name = "swiftswitcher"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "swiftswitcher"
+path = "src/main.rs"

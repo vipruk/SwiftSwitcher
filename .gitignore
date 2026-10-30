@@ -8,3 +8,5 @@ docs/superpowers/
 
 # Local agent workspace
 .superpowers/
+
+target/
