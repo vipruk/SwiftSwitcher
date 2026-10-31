@@ -547,6 +547,34 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_alt_space_hotkey_keeps_last_word() {
+        let mut t = Tracker::new(
+            vec![(
+                Hotkey::parse("Ctrl+Alt+Space").unwrap(),
+                HotkeyAction::ConvertLast,
+            )],
+            SECS5,
+        );
+        let now = Instant::now();
+        feed_text(&mut t, "ghbdtn ", now);
+        key(&mut t, 29, 1, now);
+        key(&mut t, 56, 1, now);
+        assert_eq!(
+            key(&mut t, KEY_SPACE, 1, now),
+            Some(TrackerEvent::Hotkey(HotkeyAction::ConvertLast))
+        );
+        key(&mut t, KEY_SPACE, 0, now);
+        key(&mut t, 56, 0, now);
+        key(&mut t, 29, 0, now);
+        let (word, _) = t.last_word().expect("last word kept");
+        let typed: Vec<_> = "ghbdtn"
+            .chars()
+            .map(|c| stroke_for(c, Layout::En).unwrap())
+            .collect();
+        assert_eq!(word, typed.as_slice());
+    }
+
+    #[test]
     fn modifiers_held_tracks_state() {
         let mut t = tracker();
         let now = Instant::now();

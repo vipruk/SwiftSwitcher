@@ -42,6 +42,13 @@ fn read_counts(path: &Path) -> io::Result<HashMap<String, u32>> {
     }
 }
 
+/// Which user list an edit applies to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum List {
+    Never,
+    Always,
+}
+
 impl UserDict {
     /// Loads `never.txt` and `always.txt` from `dir`. Missing files or directory give empty sets.
     pub fn load(dir: &Path) -> io::Result<UserDict> {
@@ -80,6 +87,34 @@ impl UserDict {
         let tmp = dir.join("undos.txt.tmp");
         fs::write(&tmp, text)?;
         fs::rename(tmp, dir.join("undos.txt"))
+    }
+
+    /// Edits one list file. The file on disk is the source of truth: it is
+    /// re-read right before writing, so words the daemon appended meanwhile are
+    /// kept. The result is sorted and written atomically.
+    pub fn save_edit(dir: &Path, list: List, add: &[String], remove: &[String]) -> io::Result<()> {
+        let name = match list {
+            List::Never => "never.txt",
+            List::Always => "always.txt",
+        };
+        let path = dir.join(name);
+        let mut words = read_set(&path)?;
+        for w in remove {
+            words.remove(&w.trim().to_lowercase());
+        }
+        for w in add {
+            let w = w.trim().to_lowercase();
+            if !w.is_empty() && !w.contains('\n') {
+                words.insert(w);
+            }
+        }
+        let mut sorted: Vec<_> = words.into_iter().collect();
+        sorted.sort();
+        let text: String = sorted.iter().map(|w| format!("{w}\n")).collect();
+        fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{name}.tmp"));
+        fs::write(&tmp, text)?;
+        fs::rename(tmp, path)
     }
 
     /// Adds a word to the never list, in memory and appended to `never.txt`.
@@ -148,5 +183,38 @@ mod tests {
         assert!(d.record_undo(tmp.path(), "rjl", 0).unwrap());
         assert!(d.record_undo(tmp.path(), "ckjdj", 1).unwrap());
         assert_eq!(UserDict::load(tmp.path()).unwrap().never.len(), 2);
+    }
+
+    fn lines(p: &Path) -> String {
+        fs::read_to_string(p).unwrap()
+    }
+
+    #[test]
+    fn save_edit_add_remove() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("never.txt"), "a\nb\n").unwrap();
+        UserDict::save_edit(tmp.path(), List::Never, &["c".into()], &["a".into()]).unwrap();
+        assert_eq!(lines(&tmp.path().join("never.txt")), "b\nc\n");
+        assert!(!tmp.path().join("never.txt.tmp").exists());
+    }
+
+    #[test]
+    fn save_edit_always_creates_dir_and_sorts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("sub");
+        UserDict::save_edit(&dir, List::Always, &["Zeta".into(), "alpha".into()], &[]).unwrap();
+        assert_eq!(lines(&dir.join("always.txt")), "alpha\nzeta\n");
+    }
+
+    #[test]
+    fn save_merges_concurrent_additions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("never.txt");
+        fs::write(&path, "a\n").unwrap();
+        let _loaded = UserDict::load(tmp.path()).unwrap();
+        let mut f = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(f, "x").unwrap();
+        UserDict::save_edit(tmp.path(), List::Never, &["y".into()], &[]).unwrap();
+        assert_eq!(lines(&path), "a\nx\ny\n");
     }
 }

@@ -15,6 +15,7 @@ pub struct Config {
     pub idle_reset_secs: u64,
     pub settle_ms: u64,
     pub learn_after_undos: u32,
+    pub language: String,
 }
 
 impl Default for Config {
@@ -40,6 +41,7 @@ impl Default for Config {
             idle_reset_secs: 5,
             settle_ms: 40,
             learn_after_undos: 3,
+            language: "en".into(),
         }
     }
 }
@@ -58,6 +60,20 @@ impl Config {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
             Err(e) => Err(e).with_context(|| format!("reading config {}", path.display())),
         }
+    }
+
+    #[allow(dead_code)] // used by the settings window (later task)
+    /// Atomic: writes `<name>.tmp` next to the file, then renames it.
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
+        let text = toml::to_string_pretty(self).context("serializing config")?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+        }
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
+        std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+        std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))
     }
 
     pub fn hotkeys(&self) -> anyhow::Result<Vec<(Hotkey, HotkeyAction)>> {
@@ -187,5 +203,26 @@ mod tests {
     fn paths_end_as_specified() {
         assert!(config_path().ends_with("swiftswitcher/config.toml"));
         assert!(data_dir().ends_with("swiftswitcher"));
+    }
+
+    #[test]
+    fn save_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("sub").join("config.toml");
+        let c = Config {
+            auto_correct: false,
+            convert_last: "Ctrl+Alt+Space".into(),
+            language: "ru".into(),
+            learn_after_undos: 7,
+            ..Config::default()
+        };
+        c.save(&p).unwrap();
+        assert_eq!(Config::load_or_default(&p).unwrap(), c);
+        assert!(!dir.path().join("sub").join("config.toml.tmp").exists());
+    }
+
+    #[test]
+    fn language_defaults_to_en() {
+        assert_eq!(Config::default().language, "en");
     }
 }

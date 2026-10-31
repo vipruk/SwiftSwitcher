@@ -2,8 +2,10 @@ mod check;
 mod config;
 mod corrector;
 mod desktop;
+mod i18n;
 mod inject;
 mod input;
+mod paths;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
