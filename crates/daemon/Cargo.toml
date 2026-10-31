@@ -21,3 +21,4 @@ zbus = { version = "6.2.0", default-features = false, features = ["tokio", "prox
 
 [dev-dependencies]
 tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["test-util"] }
