@@ -176,6 +176,11 @@ impl Tracker {
         None
     }
 
+    /// Seeds the Caps Lock state (e.g. from the keyboard LED at startup).
+    pub fn set_caps(&mut self, on: bool) {
+        self.caps = on;
+    }
+
     pub fn current_word(&self) -> &[Stroke] {
         &self.current
     }
@@ -439,6 +444,15 @@ mod tests {
         assert!(!t.modifiers_held());
         key(&mut t, 97, 1, now);
         assert!(t.modifiers_held());
+    }
+
+    #[test]
+    fn set_caps_applies_to_typed_strokes() {
+        let mut t = tracker();
+        let now = Instant::now();
+        t.set_caps(true);
+        feed_text(&mut t, "a", now);
+        assert!(t.current_word()[0].caps);
     }
 
     #[test]

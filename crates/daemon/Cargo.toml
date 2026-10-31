@@ -11,9 +11,13 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.104"
 dirs = "7.0.0"
+evdev = { version = "0.13.2", features = ["tokio"] }
+log = "0.4.35"
 serde = { version = "1.0.229", features = ["derive"] }
 swift-engine = { version = "0.1.0", path = "../engine" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 toml = "1.1.8"
+zbus = { version = "6.2.0", default-features = false, features = ["tokio", "proxy"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
