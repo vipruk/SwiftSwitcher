@@ -105,11 +105,13 @@ fn step(state: u16, input: &Input, hotkeys: &[(Hotkey, HotkeyAction)]) -> (u16, 
 /// The Corrector handles events one at a time, so while it waits (layout
 /// settle, modifier release) it cannot see queued events. The daemon therefore
 /// calls [`Activity::observe`] for every event, in order, *before* queueing it
-/// for the Corrector (see [`forward`]). The Corrector compares `seq` with the
-/// number of activity events it has handled itself: a difference means the
-/// user did something it has not processed yet, and it must not inject.
+/// for the Corrector, stamped with the resulting `seq` (see [`forward`] and
+/// [`Stamped`]). The Corrector compares the live `seq` with the stamp of the
+/// last event it handled: a difference means the user did something it has
+/// not processed yet, and it must not inject.
 ///
-/// Single writer: only one task may call `observe`.
+/// Activity is the only place that classifies inputs (R1, modifiers,
+/// hotkeys). Single writer: only one task may call `observe`.
 #[derive(Default)]
 pub struct Activity {
     seq: AtomicU64,
@@ -121,11 +123,14 @@ impl Activity {
         Self::default()
     }
 
-    pub fn observe(&self, input: &Input, hotkeys: &[(Hotkey, HotkeyAction)]) {
+    /// Records one input and returns `seq` as of right after it.
+    pub fn observe(&self, input: &Input, hotkeys: &[(Hotkey, HotkeyAction)]) -> u64 {
         let (state, counted) = step(self.mods.load(Ordering::SeqCst), input, hotkeys);
         self.mods.store(state, Ordering::SeqCst);
         if counted {
-            self.seq.fetch_add(1, Ordering::SeqCst);
+            self.seq.fetch_add(1, Ordering::SeqCst) + 1
+        } else {
+            self.seq()
         }
     }
 
@@ -140,18 +145,23 @@ impl Activity {
     }
 }
 
-/// Moves events from the reader to the Corrector, observing each one first.
-/// Every event must pass through here, unfiltered, or the Corrector will see
-/// unprocessed activity forever and stop acting.
+/// A physical event and the `Activity::seq()` right after it was observed.
+pub struct Stamped {
+    pub physical: Physical,
+    pub seq: u64,
+}
+
+/// Moves events from the reader to the Corrector, observing and stamping
+/// each one first.
 pub async fn forward(
     mut rx: Receiver<Physical>,
-    tx: Sender<Physical>,
+    tx: Sender<Stamped>,
     activity: Arc<Activity>,
     hotkeys: Vec<(Hotkey, HotkeyAction)>,
 ) {
-    while let Some(p) = rx.recv().await {
-        activity.observe(&p.input, &hotkeys);
-        if tx.send(p).await.is_err() {
+    while let Some(physical) = rx.recv().await {
+        let seq = activity.observe(&physical.input, &hotkeys);
+        if tx.send(Stamped { physical, seq }).await.is_err() {
             break;
         }
     }
@@ -176,10 +186,8 @@ pub struct Corrector<D: Desktop, I: Injector> {
     params: Params,
     hotkeys: Vec<(Hotkey, HotkeyAction)>,
     activity: Arc<Activity>,
-    /// Modifier state as of the last handled event (same rules as `Activity`).
-    mods: u16,
-    /// Activity events handled so far; equals `activity.seq()` when idle.
-    handled: u64,
+    /// Stamp of the last handled event; equals `activity.seq()` when idle.
+    last_stamp: u64,
     last_correction: Option<Correction>,
 }
 
@@ -208,19 +216,18 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             data_dir,
             params: Params::default(),
             hotkeys,
+            last_stamp: activity.seq(),
             activity,
-            mods: 0,
-            handled: 0,
             last_correction: None,
         })
     }
 
-    /// Feeds one event (already passed to `Activity::observe`) and acts on it.
-    pub async fn handle(&mut self, p: Physical) -> Result<()> {
-        let (mods, counted) = step(self.mods, &p.input, &self.hotkeys);
-        self.mods = mods;
-        if counted {
-            self.handled += 1;
+    /// Feeds one event stamped by [`forward`] and acts on it.
+    pub async fn handle(&mut self, ev: Stamped) -> Result<()> {
+        let Stamped { physical: p, seq } = ev;
+        if seq != self.last_stamp {
+            // Physical activity other than a hotkey: nothing is undoable now.
+            self.last_stamp = seq;
             self.last_correction = None;
         }
         match self.tracker.feed(p.input, p.at) {
@@ -237,7 +244,7 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
 
     /// No physical activity is waiting that this Corrector has not handled.
     fn quiet(&self) -> bool {
-        self.activity.seq() == self.handled
+        self.activity.seq() == self.last_stamp
     }
 
     async fn wait_modifiers_released(&self) -> bool {
@@ -722,8 +729,40 @@ mod tests {
         }
     }
 
+    /// A new Corrector sharing the rig's log, data dir and Activity.
+    fn rebuilt(r: &Rig) -> Corrector<FakeDesktop, FakeInjector> {
+        let desktop = FakeDesktop {
+            log: r.log.clone(),
+            layout: RefCell::new("us".into()),
+            target: RefCell::new(None),
+            layouts: strings(&["us", "ru"]),
+            app: "org.gnome.TextEditor".into(),
+            switch: Switch::Now,
+            convert_ok: true,
+        };
+        let injector = FakeInjector { log: r.log.clone() };
+        let dict = UserDict::load(r.dir.path()).unwrap();
+        Corrector::new(
+            desktop,
+            injector,
+            Config::default(),
+            dict,
+            r.dir.path().to_path_buf(),
+            r.activity.clone(),
+            None,
+        )
+        .unwrap()
+    }
+
     fn key_input(code: KeyCode, value: i32) -> Input {
         Input::Key { code, value }
+    }
+
+    fn stamped(input: Input, seq: u64) -> Stamped {
+        Stamped {
+            physical: phys(input),
+            seq,
+        }
     }
 
     fn phys(input: Input) -> Physical {
@@ -736,8 +775,8 @@ mod tests {
     impl Rig {
         /// What the daemon's forwarder does: observe, then hand to the Corrector.
         async fn feed(&mut self, input: Input) {
-            self.activity.observe(&input, &self.hotkeys);
-            self.c.handle(phys(input)).await.unwrap();
+            let seq = self.activity.observe(&input, &self.hotkeys);
+            self.c.handle(stamped(input, seq)).await.unwrap();
         }
 
         async fn key(&mut self, code: KeyCode, value: i32) {
@@ -867,8 +906,18 @@ mod tests {
             Config::default().hotkeys().unwrap(),
         ));
         in_tx.send(phys(key_input(30, 1))).await.unwrap();
-        let p = out_rx.recv().await.unwrap();
-        assert!(matches!(p.input, Input::Key { code: 30, value: 1 }));
+        let ev = out_rx.recv().await.unwrap();
+        assert!(matches!(
+            ev.physical.input,
+            Input::Key { code: 30, value: 1 }
+        ));
+        assert_eq!(ev.seq, 1);
+        in_tx.send(phys(key_input(30, 0))).await.unwrap();
+        assert_eq!(
+            out_rx.recv().await.unwrap().seq,
+            1,
+            "key-up keeps the stamp"
+        );
         assert_eq!(a.seq(), 1);
     }
 
@@ -889,6 +938,18 @@ mod tests {
             .position(|e| matches!(e, Ev::Op(Op::Backspace(_))))
             .unwrap();
         assert!(set < bs);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn fresh_corrector_on_used_activity_still_corrects() {
+        // E.g. the Corrector was rebuilt after a config reload; Activity lives on.
+        let mut r = rig(Setup::default());
+        for _ in 0..5 {
+            r.activity.observe(&key_input(30, 1), &r.hotkeys);
+        }
+        r.c = rebuilt(&r);
+        r.type_text("ghbdtn ").await;
+        assert_eq!(r.ops(), correction_ops("ghbdtn"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -954,9 +1015,9 @@ mod tests {
         let mut r = rig(Setup::default());
         r.type_text("ghbdtn").await;
         let space = key_input(KEY_SPACE, 1);
-        r.activity.observe(&space, &r.hotkeys);
+        let seq = r.activity.observe(&space, &r.hotkeys);
         let (a, hk) = (r.activity.clone(), r.hotkeys.clone());
-        let (res, ()) = tokio::join!(r.c.handle(phys(space)), async move {
+        let (res, ()) = tokio::join!(r.c.handle(stamped(space, seq)), async move {
             sleep(Duration::from_millis(20)).await;
             a.observe(&key_input(30, 1), &hk);
         });
@@ -971,9 +1032,10 @@ mod tests {
         let mut r = rig(Setup::default());
         r.type_text("ghbdtn").await;
         let space = key_input(KEY_SPACE, 1);
-        r.activity.observe(&space, &r.hotkeys);
+        let seq = r.activity.observe(&space, &r.hotkeys);
         r.activity.observe(&key_input(30, 1), &r.hotkeys);
-        r.c.handle(phys(space)).await.unwrap();
+        // The space arrives with its own (now stale) stamp.
+        r.c.handle(stamped(space, seq)).await.unwrap();
         assert!(r.ops().is_empty());
         assert!(r.calls().is_empty());
     }
@@ -1044,9 +1106,9 @@ mod tests {
     async fn shift_pause(r: &mut Rig, release_after: Option<Duration>) {
         r.key(KEY_SHIFT, 1).await;
         let pause = key_input(KEY_PAUSE, 1);
-        r.activity.observe(&pause, &r.hotkeys);
+        let seq = r.activity.observe(&pause, &r.hotkeys);
         let (a, hk, log) = (r.activity.clone(), r.hotkeys.clone(), r.log.clone());
-        let (res, ()) = tokio::join!(r.c.handle(phys(pause)), async move {
+        let (res, ()) = tokio::join!(r.c.handle(stamped(pause, seq)), async move {
             if let Some(d) = release_after {
                 sleep(d).await;
                 assert!(log.borrow().is_empty(), "nothing before Shift is up");
