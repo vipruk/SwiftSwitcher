@@ -176,10 +176,15 @@ fn recall_report() {
     }
 }
 
+/// Reads `target/corpus/`, or `SWIFT_CORPUS_DIR` (e.g. a held-out corpus with
+/// the same file names, checked without retuning).
 #[test]
 #[ignore = "needs scripts/fetch-corpus.sh"]
 fn full_corpus_precision() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus");
+    let dir = std::env::var_os("SWIFT_CORPUS_DIR").map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus"),
+        PathBuf::from,
+    );
     for (file, lang) in [
         ("eng-sentences.txt", Layout::En),
         ("rus-sentences.txt", Layout::Ru),
