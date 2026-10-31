@@ -1,0 +1,7 @@
+{
+  "uuid": "swiftswitcher@vipruk.github.io",
+  "name": "SwiftSwitcher",
+  "description": "D-Bus bridge for the SwiftSwitcher daemon: reads and switches the input source, reports the focused app and converts the selected text between the US and RU layouts.",
+  "shell-version": ["50"],
+  "url": "https://github.com/vipruk/SwiftSwitcher"
+}
