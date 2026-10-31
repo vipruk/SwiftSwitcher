@@ -11,6 +11,29 @@ const RU_CHARS = [...RU];
 const CYRILLIC = /[а-яА-ЯёЁ]/;
 const LATIN = /[A-Za-z]/;
 
+function isMostlyCyrillic(text) {
+    let cyrillic = 0;
+    let latin = 0;
+    for (const c of text) {
+        if (CYRILLIC.test(c))
+            cyrillic++;
+        else if (LATIN.test(c))
+            latin++;
+    }
+    return cyrillic > latin;
+}
+
+/**
+ * The input source id that `convertText(text)` converts into: "us" for
+ * RU->EN, "ru" for EN->RU.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function targetSource(text) {
+    return isMostlyCyrillic(text) ? 'us' : 'ru';
+}
+
 /**
  * Re-types `text` as if the other layout had been active. Direction: more
  * Cyrillic than Latin letters means RU->EN, otherwise EN->RU. Unmapped
@@ -20,15 +43,7 @@ const LATIN = /[A-Za-z]/;
  * @returns {string}
  */
 export function convertText(text) {
-    let cyrillic = 0;
-    let latin = 0;
-    for (const c of text) {
-        if (CYRILLIC.test(c))
-            cyrillic++;
-        else if (LATIN.test(c))
-            latin++;
-    }
-    const [from, to] = cyrillic > latin ? [RU_CHARS, EN_CHARS] : [EN_CHARS, RU_CHARS];
+    const [from, to] = isMostlyCyrillic(text) ? [RU_CHARS, EN_CHARS] : [EN_CHARS, RU_CHARS];
     let out = '';
     for (const c of text) {
         const i = from.indexOf(c);

@@ -11,7 +11,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 
 import {pickMimetype} from './clipboard.js';
-import {convertText} from './keymap.js';
+import {convertText, targetSource} from './keymap.js';
 
 const BUS_NAME = 'io.github.vipruk.SwiftSwitcher.Shell';
 const OBJECT_PATH = '/io/github/vipruk/SwiftSwitcher/Shell';
@@ -36,7 +36,7 @@ const IFACE_XML = `
       <arg type="b" direction="out" name="ok"/>
     </method>
     <method name="SelectionConvert">
-      <arg type="b" direction="out" name="ok"/>
+      <arg type="s" direction="out" name="target"/>
     </method>
     <method name="SelectionEnd">
       <arg type="b" direction="out" name="ok"/>
@@ -68,6 +68,10 @@ function writeClipboard(text) {
 
 function returnBoolean(invocation, value) {
     invocation.return_value(new GLib.Variant('(b)', [value]));
+}
+
+function returnString(invocation, value) {
+    invocation.return_value(new GLib.Variant('(s)', [value]));
 }
 
 class ShellBridge {
@@ -148,18 +152,20 @@ class ShellBridge {
         }
     }
 
+    // Returns the input source id the converted text is in, or '' if
+    // nothing was converted (then the daemon does not paste).
     async SelectionConvertAsync(_params, invocation) {
         try {
             const text = await readClipboard();
             if (!text) {
-                returnBoolean(invocation, false);
+                returnString(invocation, '');
                 return;
             }
             writeClipboard(convertText(text));
-            returnBoolean(invocation, true);
+            returnString(invocation, targetSource(text));
         } catch (e) {
             console.error(`SwiftSwitcher: SelectionConvert failed: ${e.name}`);
-            returnBoolean(invocation, false);
+            returnString(invocation, '');
         }
     }
 

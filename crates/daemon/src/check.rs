@@ -34,11 +34,26 @@ fn device_check(kind: Kind, what: &str) -> Result<(), String> {
             Err(_) => {}
         }
     }
+    Err(device_hint(what, denied))
+}
+
+fn device_hint(what: &str, denied: bool) -> String {
     if denied {
-        Err(format!("no readable {what} device; {SETUP_FIX}"))
+        format!("no readable {what} device; {SETUP_FIX}, then unplug and replug it")
     } else {
-        Err(format!("no {what} device found in /dev/input"))
+        format!(
+            "no {what} device found in /dev/input; connect one (in a VM or container, \
+             pass the host's /dev/input through)"
+        )
     }
+}
+
+fn bus_hint(e: &dyn std::fmt::Display) -> String {
+    format!(
+        "cannot connect to the session bus ({e}); run this in a terminal inside your \
+         GNOME session as yourself, not over ssh, with sudo or as another user \
+         (DBUS_SESSION_BUS_ADDRESS must point at the session bus)"
+    )
 }
 
 fn uinput_check() -> Result<(), String> {
@@ -56,8 +71,12 @@ pub async fn run() -> bool {
         ("keyboard", device_check(Kind::Keyboard, "keyboard")),
         (
             "pointer",
-            device_check(Kind::Pointer, "mouse/touchpad")
-                .map_err(|e| format!("{e} (without it clicks and taps cannot reset typing state)")),
+            device_check(Kind::Pointer, "mouse/touchpad").map_err(|e| {
+                format!(
+                    "{e} (without it clicks and taps cannot reset the typing state, so \
+                     automatic correction stays off; hotkeys still work)"
+                )
+            }),
         ),
         ("uinput", uinput_check()),
     ];
@@ -68,7 +87,7 @@ pub async fn run() -> bool {
                 "GNOME extension not reachable ({e}); run scripts/dev-setup.sh, then log out and back in"
             )
         }),
-        Err(e) => Err(format!("cannot connect to the session bus ({e})")),
+        Err(e) => Err(bus_hint(&e)),
     };
     results.push(("dbus", layouts.as_ref().map(drop).map_err(|e| e.clone())));
     results.push((
@@ -93,6 +112,15 @@ mod tests {
             format_report(&[("uinput", Err("run scripts/dev-setup.sh"))]),
             "uinput: FAIL: run scripts/dev-setup.sh\n"
         );
+    }
+
+    #[test]
+    fn hints_name_a_fix() {
+        assert!(device_hint("keyboard", true).contains(SETUP_FIX));
+        assert!(device_hint("keyboard", false).contains("connect one"));
+        let bus = bus_hint(&"no address");
+        assert!(bus.contains("inside your GNOME session"));
+        assert!(bus.contains("DBUS_SESSION_BUS_ADDRESS"));
     }
 
     #[test]

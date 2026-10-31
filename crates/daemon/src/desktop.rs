@@ -13,7 +13,9 @@ pub trait Desktop {
     async fn set_layout(&self, id: &str) -> Result<bool>;
     async fn focused_app(&self) -> Result<String>;
     async fn selection_begin(&self) -> Result<bool>;
-    async fn selection_convert(&self) -> Result<bool>;
+    /// Converts the clipboard; returns the input source id the text is now
+    /// in, or "" if nothing was converted.
+    async fn selection_convert(&self) -> Result<String>;
     async fn selection_end(&self) -> Result<bool>;
 }
 
@@ -28,7 +30,7 @@ trait Shell {
     fn set_layout(&self, id: &str) -> zbus::Result<bool>;
     fn get_focused_app(&self) -> zbus::Result<String>;
     fn selection_begin(&self) -> zbus::Result<bool>;
-    fn selection_convert(&self) -> zbus::Result<bool>;
+    fn selection_convert(&self) -> zbus::Result<String>;
     fn selection_end(&self) -> zbus::Result<bool>;
 }
 
@@ -70,7 +72,7 @@ impl Desktop for GnomeDesktop {
     async fn selection_begin(&self) -> Result<bool> {
         call(self.proxy.selection_begin()).await
     }
-    async fn selection_convert(&self) -> Result<bool> {
+    async fn selection_convert(&self) -> Result<String> {
         call(self.proxy.selection_convert()).await
     }
     async fn selection_end(&self) -> Result<bool> {

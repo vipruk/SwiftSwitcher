@@ -71,7 +71,7 @@ async fn run() -> Result<()> {
 
     let (raw_tx, raw_rx) = mpsc::channel(256);
     let (tx, mut rx) = mpsc::channel(256);
-    input::spawn_reader(raw_tx)?;
+    input::spawn_reader(raw_tx, activity.clone())?;
     tokio::spawn(corrector::forward(raw_rx, tx, activity, hotkeys));
     log::info!("swiftswitcher running");
 

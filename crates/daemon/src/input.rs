@@ -2,9 +2,11 @@
 //!
 //! Event contents are never logged; only device paths appear in log lines.
 
+use crate::corrector::Activity;
 use evdev::{Device, EventType, KeyCode as EvKey, LedCode};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use swift_engine::tracker::Input;
@@ -69,6 +71,20 @@ pub fn device_kind(dev: &Device) -> Option<Kind> {
     }
 }
 
+/// Whether a device reports clicks or taps (a keyboard with a built-in
+/// touchpad counts too).
+fn reports_pointer(dev: &Device) -> bool {
+    dev.supported_keys()
+        .is_some_and(|k| k.contains(EvKey::BTN_LEFT) || k.contains(EvKey::BTN_TOUCH))
+}
+
+/// Pointer availability after a scan: `Some(present)` when it changed since
+/// `prev` (or on the first scan), i.e. when it must be logged.
+pub fn pointer_change(prev: Option<bool>, pointers: usize) -> Option<bool> {
+    let present = pointers > 0;
+    (prev != Some(present)).then_some(present)
+}
+
 /// Classification that also lets a keyboard report pointer buttons.
 fn event_kind(kind: Kind, code: u16) -> Kind {
     if code >= BTN_MISC {
@@ -111,10 +127,16 @@ pub fn initial_caps_lock() -> Option<bool> {
 }
 
 /// Starts the hotplug scanner. Must be called inside a tokio runtime.
-pub fn spawn_reader(tx: Sender<Physical>) -> anyhow::Result<()> {
+///
+/// Without a readable pointer device a click could move the caret unseen,
+/// so the reader keeps `activity`'s pointer flag up to date: automatic
+/// correction is off while it is false (hotkeys keep working).
+pub fn spawn_reader(tx: Sender<Physical>, activity: Arc<Activity>) -> anyhow::Result<()> {
     let open: Arc<Mutex<HashSet<PathBuf>>> = Arc::default();
+    let pointers: Arc<AtomicUsize> = Arc::default();
     tokio::spawn(async move {
         let mut warned: HashSet<PathBuf> = HashSet::new();
+        let mut pointer_state: Option<bool> = None;
         loop {
             for path in input_paths() {
                 if open.lock().unwrap().contains(&path) {
@@ -135,12 +157,17 @@ pub fn spawn_reader(tx: Sender<Physical>) -> anyhow::Result<()> {
                 let Some(kind) = device_kind(&dev) else {
                     continue;
                 };
+                let pointer = reports_pointer(&dev);
                 let Ok(mut stream) = dev.into_event_stream() else {
                     continue;
                 };
                 open.lock().unwrap().insert(path.clone());
+                if pointer {
+                    pointers.fetch_add(1, Ordering::SeqCst);
+                }
                 log::info!("reading {}", path.display());
                 let (tx, open, p) = (tx.clone(), open.clone(), path.clone());
+                let (pointers, activity) = (pointers.clone(), activity.clone());
                 tokio::spawn(async move {
                     while let Ok(ev) = stream.next_event().await {
                         let Some(input) = relevant(ev.event_type(), ev.code(), ev.value(), kind)
@@ -153,8 +180,26 @@ pub fn spawn_reader(tx: Sender<Physical>) -> anyhow::Result<()> {
                         }
                     }
                     log::info!("device gone: {}", p.display());
+                    if pointer && pointers.fetch_sub(1, Ordering::SeqCst) == 1 {
+                        // Last pointer gone: stop at once, not at the next scan.
+                        activity.set_pointer_present(false);
+                    }
                     open.lock().unwrap().remove(&p);
                 });
+            }
+            let count = pointers.load(Ordering::SeqCst);
+            activity.set_pointer_present(count > 0);
+            if let Some(present) = pointer_change(pointer_state, count) {
+                if present {
+                    log::info!("pointer device available; automatic correction enabled");
+                } else {
+                    log::warn!(
+                        "no mouse, touchpad or touchscreen can be read: clicks cannot reset \
+                         the typing state, so automatic correction is off until one \
+                         appears (hotkeys still work); see `swiftswitcher check`"
+                    );
+                }
+                pointer_state = Some(present);
             }
             tokio::time::sleep(RESCAN).await;
         }
@@ -224,6 +269,16 @@ mod tests {
             relevant(EventType::KEY, 0x110, 1, Kind::Keyboard),
             Some(Input::PointerButton)
         ));
+    }
+
+    #[test]
+    fn pointer_change_reports_transitions_only() {
+        assert_eq!(pointer_change(None, 0), Some(false), "warn at startup");
+        assert_eq!(pointer_change(None, 2), Some(true));
+        assert_eq!(pointer_change(Some(false), 0), None);
+        assert_eq!(pointer_change(Some(true), 1), None);
+        assert_eq!(pointer_change(Some(true), 0), Some(false));
+        assert_eq!(pointer_change(Some(false), 1), Some(true));
     }
 
     #[test]
