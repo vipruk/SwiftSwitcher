@@ -57,9 +57,15 @@ function readClipboard() {
     });
 }
 
+// The GBytes handed to the callback is only borrowed and is freed after it
+// returns, so its data is copied out. Restoring a freed GBytes stalls the
+// shell for seconds and loses the clipboard. Empty content counts as nothing.
 function readContent(mimetype) {
     return new Promise(resolve => {
-        St.Clipboard.get_default().get_content(CLIPBOARD, mimetype, (_clipboard, bytes) => resolve(bytes));
+        St.Clipboard.get_default().get_content(CLIPBOARD, mimetype, (_clipboard, bytes) => {
+            const data = bytes?.get_size() ? bytes.toArray().slice() : null;
+            resolve(data);
+        });
     });
 }
 
@@ -71,8 +77,8 @@ const CLIPBOARD_IO = {
     mimetypes: () => St.Clipboard.get_default().get_mimetypes(CLIPBOARD),
     read: readContent,
     clear: () => writeClipboard(''),
-    restore: (mimetype, bytes) =>
-        St.Clipboard.get_default().set_content(CLIPBOARD, mimetype, bytes),
+    restore: (mimetype, data) =>
+        St.Clipboard.get_default().set_content(CLIPBOARD, mimetype, new GLib.Bytes(data)),
     addTimeout: (seconds, fn) => GLib.timeout_add_seconds(
         GLib.PRIORITY_DEFAULT, seconds, () => {
             fn();
