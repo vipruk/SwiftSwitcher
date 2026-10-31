@@ -9,6 +9,7 @@ import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
+import * as KeyboardManager from 'resource:///org/gnome/shell/misc/keyboardManager.js';
 
 import {ClipboardSaver, isWholeLineCopy} from './clipboard.js';
 import {convertText, targetSource} from './keymap.js';
@@ -102,8 +103,33 @@ class ShellBridge {
         return Object.values(manager.inputSources).sort((a, b) => a.index - b.index);
     }
 
+    // The current input source, but only once mutter has applied its keymap
+    // layout group; '' while a switch is still pending. The daemon types
+    // right after this confirms a switch, so it must not report the source
+    // too early: InputSourceManager.currentSource changes synchronously on
+    // activate(), while the backend applies the group asynchronously.
+    //
+    // GNOME 50 exposes no getter for the applied group (Meta.Backend has
+    // set_keymap_async() and the keymap-layout-group-changed signal only), so
+    // this uses KeyboardManager's `_current`, which it assigns after
+    // `await global.backend.set_keymap_async(...)`, i.e. after the backend
+    // applied the group. Measured in a nested GNOME Shell 50.1: currentSource
+    // flips immediately, keymap-layout-group-changed follows 3-18 ms later and
+    // `_current` right after it. If that private field ever disappears this
+    // returns '' and the daemon does nothing (it never types unconfirmed).
     GetLayout() {
-        return Keyboard.getInputSourceManager().currentSource?.id ?? '';
+        const source = Keyboard.getInputSourceManager().currentSource;
+        if (!source)
+            return '';
+        const keyboardManager = KeyboardManager.getKeyboardManager();
+        if (!('_current' in keyboardManager)) {
+            if (!this._warnedNoCurrent) {
+                this._warnedNoCurrent = true;
+                console.error('SwiftSwitcher: cannot confirm the applied layout; corrections disabled');
+            }
+            return '';
+        }
+        return keyboardManager._current?.id === source.xkbId ? source.id : '';
     }
 
     ListLayouts() {
