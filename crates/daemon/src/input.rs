@@ -51,6 +51,35 @@ pub fn classify(code: u16, value: i32, device_kind: Kind) -> Option<Input> {
     }
 }
 
+/// Keys last seen down on one device and not yet released. When the device
+/// vanishes (ENODEV) the kernel's synthesized key-ups never reach us, so the
+/// reader replays them from this set to keep `Activity` consistent.
+#[derive(Default)]
+pub struct HeldKeys(std::collections::BTreeSet<u16>);
+
+impl HeldKeys {
+    /// Records a raw key event; BTN_* codes are not tracked (see `classify`).
+    pub fn observe(&mut self, code: u16, value: i32) {
+        if code >= BTN_MISC {
+            return;
+        }
+        match value {
+            0 => {
+                self.0.remove(&code);
+            }
+            1 | 2 => {
+                self.0.insert(code);
+            }
+            _ => {}
+        }
+    }
+
+    /// Codes still down; empties the set.
+    pub fn drain_releases(&mut self) -> Vec<u16> {
+        std::mem::take(&mut self.0).into_iter().collect()
+    }
+}
+
 /// Full per-event filter used by the stream loop: only EV_KEY events matter.
 fn relevant(ev_type: EventType, code: u16, value: i32, kind: Kind) -> Option<Input> {
     if ev_type != EventType::KEY {
@@ -169,13 +198,31 @@ pub fn spawn_reader(tx: Sender<Physical>, activity: Arc<Activity>) -> anyhow::Re
                 let (tx, open, p) = (tx.clone(), open.clone(), path.clone());
                 let (pointers, activity) = (pointers.clone(), activity.clone());
                 tokio::spawn(async move {
+                    let mut held = HeldKeys::default();
                     while let Ok(ev) = stream.next_event().await {
                         let Some(input) = relevant(ev.event_type(), ev.code(), ev.value(), kind)
                         else {
                             continue;
                         };
+                        if let Input::Key { code, value } = input {
+                            held.observe(code, value);
+                        }
                         let at = Instant::now();
                         if tx.send(Physical { input, at }).await.is_err() {
+                            break;
+                        }
+                    }
+                    // Unplugged mid-press: synthesize the key-ups evdev never delivered.
+                    for code in held.drain_releases() {
+                        let input = Input::Key { code, value: 0 };
+                        if tx
+                            .send(Physical {
+                                input,
+                                at: Instant::now(),
+                            })
+                            .await
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -209,6 +256,40 @@ pub fn spawn_reader(tx: Sender<Physical>, activity: Arc<Activity>) -> anyhow::Re
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn held_keys_released_pair_leaves_nothing() {
+        let mut h = HeldKeys::default();
+        h.observe(30, 1);
+        h.observe(30, 0);
+        assert!(h.drain_releases().is_empty());
+    }
+
+    #[test]
+    fn held_keys_repeat_still_held() {
+        let mut h = HeldKeys::default();
+        h.observe(30, 1);
+        h.observe(30, 2);
+        assert_eq!(h.drain_releases(), vec![30]);
+        assert!(h.drain_releases().is_empty());
+    }
+
+    #[test]
+    fn held_keys_only_unreleased_drained() {
+        let mut h = HeldKeys::default();
+        h.observe(30, 1);
+        h.observe(31, 1);
+        h.observe(30, 0);
+        assert_eq!(h.drain_releases(), vec![31]);
+    }
+
+    #[test]
+    fn held_keys_ignore_pointer_buttons() {
+        let mut h = HeldKeys::default();
+        h.observe(0x110, 1);
+        h.observe(0x14a, 1);
+        assert!(h.drain_releases().is_empty());
+    }
     use super::*;
 
     #[test]

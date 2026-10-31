@@ -337,7 +337,7 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
         };
         let ok = timeout(KEYS_TIMEOUT, wait).await.is_ok();
         if !ok {
-            log::debug!("keys still held; action abandoned");
+            log::warn!("keys still held after 300 ms; skipping correction");
         }
         ok
     }
