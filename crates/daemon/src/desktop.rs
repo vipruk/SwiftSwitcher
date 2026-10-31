@@ -40,14 +40,24 @@ pub struct GnomeDesktop {
 
 impl GnomeDesktop {
     pub async fn connect() -> Result<Self> {
-        let conn = tokio::time::timeout(CALL_TIMEOUT, zbus::Connection::session())
-            .await
-            .context("session bus connect timed out")??;
-        let proxy = tokio::time::timeout(CALL_TIMEOUT, ShellProxy::new(&conn))
+        Self::on(&session().await?).await
+    }
+
+    /// A client on an existing connection; several may share one.
+    pub async fn on(conn: &zbus::Connection) -> Result<Self> {
+        let proxy = tokio::time::timeout(CALL_TIMEOUT, ShellProxy::new(conn))
             .await
             .context("proxy creation timed out")??;
         Ok(Self { proxy })
     }
+}
+
+/// Connects to the session bus, with the same timeout as a call.
+pub async fn session() -> Result<zbus::Connection> {
+    tokio::time::timeout(CALL_TIMEOUT, zbus::Connection::session())
+        .await
+        .context("session bus connect timed out")?
+        .context("connecting to the session bus")
 }
 
 async fn call<T>(f: impl Future<Output = zbus::Result<T>>) -> Result<T> {

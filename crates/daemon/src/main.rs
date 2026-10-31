@@ -6,34 +6,47 @@ mod i18n;
 mod inject;
 mod input;
 mod paths;
+mod reload;
+mod service;
+mod status;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
 use swift_engine::dict::UserDict;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 #[derive(Parser)]
 #[command(version, about = "Automatic RU/EN wrong-layout corrector")]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Option<Mode>,
 }
 
 #[derive(Subcommand)]
-enum Command {
+enum Mode {
     /// Start the daemon (the default).
     Run,
     /// Check that the environment is set up correctly.
     Check,
 }
 
+/// Runtime requests to the daemon's main loop.
+// Sent about once per config edit; boxing would only add noise.
+#[allow(clippy::large_enum_variant)]
+pub enum Command {
+    /// The config and dictionaries changed on disk and parsed.
+    Reload(config::Config, UserDict),
+    ConvertSelection,
+    Quit,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    match Cli::parse().command.unwrap_or(Command::Run) {
-        Command::Run => run().await,
-        Command::Check => {
+    match Cli::parse().command.unwrap_or(Mode::Run) {
+        Mode::Run => run().await,
+        Mode::Check => {
             if !check::run().await {
                 std::process::exit(1);
             }
@@ -42,13 +55,36 @@ async fn main() -> Result<()> {
     }
 }
 
+/// How often the config and dictionary files are checked for changes.
+const RELOAD_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+
 async fn run() -> Result<()> {
-    let config = config::Config::load_or_default(&config::config_path())?;
+    let config_path = config::config_path();
     let data_dir = config::data_dir();
+    // Before loading, so a change made while starting up is not missed.
+    let watcher = reload::Watcher::new([
+        config_path.clone(),
+        data_dir.join("never.txt"),
+        data_dir.join("always.txt"),
+    ]);
+    let config = config::Config::load_or_default(&config_path)?;
     let dict = UserDict::load(&data_dir)?;
-    // The same hotkeys must reach `forward` and the Corrector.
-    let hotkeys = config.hotkeys()?;
-    let desktop = desktop::GnomeDesktop::connect().await?;
+
+    // Single instance: own the bus name before opening any device or
+    // creating the uinput device.
+    let conn = desktop::session().await?;
+    let (status_tx, status_rx) = watch::channel(status::Status {
+        auto_correct: config.auto_correct,
+        problem: None,
+    });
+    let (cmd_tx, mut cmd_rx) = mpsc::channel(16);
+    service::serve(&conn, status_rx, cmd_tx.clone()).await?;
+    if !service::acquire(&conn).await? {
+        log::info!("swiftswitcher is already running");
+        return Ok(());
+    }
+
+    let desktop = desktop::GnomeDesktop::on(&conn).await?;
     {
         use desktop::Desktop;
         match desktop.layouts().await {
@@ -61,6 +97,7 @@ async fn run() -> Result<()> {
     }
     let injector = inject::UinputInjector::new()?;
     let activity = Arc::new(corrector::Activity::new());
+    let (config_tx, config_rx) = watch::channel(config.clone());
     let mut corrector = corrector::Corrector::new(
         desktop,
         injector,
@@ -74,7 +111,19 @@ async fn run() -> Result<()> {
     let (raw_tx, raw_rx) = mpsc::channel(256);
     let (tx, mut rx) = mpsc::channel(256);
     input::spawn_reader(raw_tx, activity.clone())?;
-    tokio::spawn(corrector::forward(raw_rx, tx, activity, hotkeys));
+    tokio::spawn(corrector::forward(
+        raw_rx,
+        tx,
+        activity.clone(),
+        corrector.shared_hotkeys(),
+    ));
+    tokio::spawn(status::refresh(
+        desktop::GnomeDesktop::on(&conn).await?,
+        activity,
+        config_rx,
+        status_tx,
+    ));
+    tokio::spawn(watcher.run(RELOAD_POLL, cmd_tx));
     log::info!("swiftswitcher running");
 
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
@@ -86,6 +135,24 @@ async fn run() -> Result<()> {
                     log::warn!("handling failed: {e:#}");
                 }
             }
+            Some(cmd) = cmd_rx.recv() => match cmd {
+                Command::Reload(config, dict) => {
+                    let shared = config.clone();
+                    match corrector.apply(config, dict) {
+                        Ok(()) => {
+                            log::info!("configuration reloaded");
+                            config_tx.send_replace(shared);
+                        }
+                        Err(e) => log::warn!("configuration not applied: {e:#}"),
+                    }
+                }
+                Command::ConvertSelection => {
+                    if let Err(e) = corrector.convert_selection_now().await {
+                        log::warn!("selection convert failed: {e:#}");
+                    }
+                }
+                Command::Quit => break,
+            },
             _ = tokio::signal::ctrl_c() => break,
             _ = term.recv() => break,
         }

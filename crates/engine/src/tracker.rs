@@ -211,6 +211,12 @@ impl Tracker {
         None
     }
 
+    /// Replaces the hotkeys and idle timeout; words and key state are kept.
+    pub fn reconfigure(&mut self, hotkeys: Vec<(Hotkey, HotkeyAction)>, idle: Duration) {
+        self.hotkeys = hotkeys;
+        self.idle = idle;
+    }
+
     /// Seeds the Caps Lock state (e.g. from the keyboard LED at startup).
     pub fn set_caps(&mut self, on: bool) {
         self.caps = on;

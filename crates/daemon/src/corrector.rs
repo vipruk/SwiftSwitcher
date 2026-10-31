@@ -12,8 +12,8 @@ use crate::inject::Injector;
 use crate::input::Physical;
 use anyhow::Result;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use swift_engine::detect::{Params, Verdict, decide};
 use swift_engine::dict::UserDict;
@@ -192,10 +192,13 @@ pub async fn forward(
     mut rx: Receiver<Physical>,
     tx: Sender<Stamped>,
     activity: Arc<Activity>,
-    hotkeys: Vec<(Hotkey, HotkeyAction)>,
+    hotkeys: SharedHotkeys,
 ) {
     while let Some(physical) = rx.recv().await {
-        let seq = activity.observe(&physical.input, &hotkeys);
+        let seq = {
+            let hk = hotkeys.read().unwrap_or_else(|e| e.into_inner());
+            activity.observe(&physical.input, &hk)
+        };
         if tx.send(Stamped { physical, seq }).await.is_err() {
             break;
         }
@@ -241,7 +244,12 @@ pub struct Corrector<D: Desktop, I: Injector> {
     /// The current word was converted by hand (Pause mid-word): it must not
     /// be auto-corrected when it ends.
     user_decided: bool,
+    /// Shared with [`forward`]; replaced in place by [`Corrector::apply`].
+    hotkeys: SharedHotkeys,
 }
+
+/// The hotkey list [`forward`] classifies inputs with.
+pub type SharedHotkeys = Arc<RwLock<Vec<(Hotkey, HotkeyAction)>>>;
 
 impl<D: Desktop, I: Injector> Corrector<D, I> {
     pub fn new(
@@ -254,6 +262,7 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
         initial_caps: Option<bool>,
     ) -> Result<Self> {
         let hotkeys = config.hotkeys()?;
+        let shared = Arc::new(RwLock::new(hotkeys.clone()));
         let mut tracker = Tracker::new(hotkeys, Duration::from_secs(config.idle_reset_secs));
         if let Some(caps) = initial_caps {
             tracker.set_caps(caps);
@@ -271,7 +280,37 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             last_correction: None,
             disturbed_until: None,
             user_decided: false,
+            hotkeys: shared,
         })
+    }
+
+    /// The hotkeys to hand to [`forward`].
+    pub fn shared_hotkeys(&self) -> SharedHotkeys {
+        self.hotkeys.clone()
+    }
+
+    /// Takes a reloaded config and dictionary. The current word is kept; the
+    /// last correction is no longer undoable. Undo counts are merged by
+    /// taking the larger count per word, so none recorded in memory is lost.
+    /// On error (invalid hotkey) nothing changes.
+    pub fn apply(&mut self, config: Config, mut dict: UserDict) -> Result<()> {
+        let hotkeys = config.hotkeys()?;
+        for (word, &n) in &self.dict.undos {
+            let m = dict.undos.entry(word.clone()).or_insert(0);
+            *m = (*m).max(n);
+        }
+        self.tracker
+            .reconfigure(hotkeys.clone(), Duration::from_secs(config.idle_reset_secs));
+        *self.hotkeys.write().unwrap_or_else(|e| e.into_inner()) = hotkeys;
+        self.config = config;
+        self.dict = dict;
+        self.last_correction = None;
+        Ok(())
+    }
+
+    /// Converts the selected text, as the selection hotkey does.
+    pub async fn convert_selection_now(&mut self) -> Result<()> {
+        self.convert_selection().await
     }
 
     /// Feeds one event stamped by [`forward`] and acts on it.
@@ -1098,7 +1137,7 @@ mod tests {
             in_rx,
             out_tx,
             a.clone(),
-            Config::default().hotkeys().unwrap(),
+            Arc::new(RwLock::new(Config::default().hotkeys().unwrap())),
         ));
         in_tx.send(phys(key_input(30, 1))).await.unwrap();
         let ev = out_rx.recv().await.unwrap();
@@ -1315,6 +1354,85 @@ mod tests {
         r.tap(KEY_PAUSE).await;
         assert!(r.ops().is_empty());
         assert!(r.calls().is_empty());
+    }
+
+    // ---- apply (hot reload) ----
+
+    const KEY_F9: KeyCode = 67;
+
+    #[tokio::test(start_paused = true)]
+    async fn apply_rebinds_hotkey() {
+        let mut r = rig(Setup::default());
+        r.type_text("ghb").await;
+        let config = Config {
+            convert_last: "F9".into(),
+            ..Config::default()
+        };
+        r.c.apply(config, UserDict::default()).unwrap();
+        // What `forward` reads: the shared list was updated in place.
+        r.hotkeys = r.c.shared_hotkeys().read().unwrap().clone();
+        assert_eq!(
+            r.hotkeys,
+            Config::default()
+                .hotkeys()
+                .map(|mut h| {
+                    h[0].0 = Hotkey::parse("F9").unwrap();
+                    h
+                })
+                .unwrap()
+        );
+        // The current word survived the reload.
+        r.type_text("dtn ").await;
+        let mut want = correction_ops("ghbdtn");
+        assert_eq!(r.ops(), want);
+        r.tap(KEY_F9).await;
+        want.extend(correction_ops("ghbdtn"));
+        assert_eq!(r.ops(), want, "F9 undoes");
+        r.type_text("ghbdtn ").await;
+        want.extend(correction_ops("ghbdtn"));
+        r.tap(KEY_PAUSE).await;
+        assert_eq!(r.ops(), want, "Pause is a plain key now");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn apply_clears_last_correction() {
+        let mut r = rig(Setup::default());
+        r.type_text("ghbdtn ").await;
+        let before = r.ops();
+        r.c.apply(Config::default(), UserDict::default()).unwrap();
+        r.tap(KEY_PAUSE).await;
+        // Not an undo: Pause converts the last word again by hand instead of
+        // restoring it and counting an undo.
+        assert!(!r.dir.path().join("undos.txt").exists());
+        assert!(r.ops().len() > before.len());
+    }
+
+    #[test]
+    fn apply_with_bad_hotkey_changes_nothing() {
+        let mut r = rig(Setup::default());
+        let config = Config {
+            convert_last: "Bogus".into(),
+            auto_correct: false,
+            ..Config::default()
+        };
+        assert!(r.c.apply(config, UserDict::default()).is_err());
+        assert!(r.c.config.auto_correct);
+        assert_eq!(*r.c.shared_hotkeys().read().unwrap(), r.hotkeys);
+    }
+
+    #[test]
+    fn apply_merges_undo_counts_by_max() {
+        let mut r = rig(Setup::default());
+        r.c.dict.undos.insert("a".into(), 2);
+        r.c.dict.undos.insert("b".into(), 1);
+        let mut reloaded = UserDict::default();
+        reloaded.undos.insert("b".into(), 4);
+        reloaded.undos.insert("c".into(), 1);
+        reloaded.never.insert("x".into());
+        r.c.apply(Config::default(), reloaded).unwrap();
+        let u = &r.c.dict.undos;
+        assert_eq!((u["a"], u["b"], u["c"]), (2, 4, 1));
+        assert!(r.c.dict.never.contains("x"));
     }
 
     // ---- Shift+Pause: selection convert ----
