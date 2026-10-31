@@ -1,7 +1,5 @@
 //! Synthesizes key events through a uinput virtual keyboard.
 
-#![allow(dead_code)]
-
 use crate::input::VIRTUAL_DEVICE_NAME;
 use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, EventType, InputEvent, KeyCode as EvKey};

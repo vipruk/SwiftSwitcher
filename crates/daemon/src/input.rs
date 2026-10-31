@@ -2,8 +2,6 @@
 //!
 //! Event contents are never logged; only device paths appear in log lines.
 
-#![allow(dead_code)]
-
 use evdev::{Device, EventType, KeyCode as EvKey, LedCode};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -60,7 +58,7 @@ fn relevant(ev_type: EventType, code: u16, value: i32, kind: Kind) -> Option<Inp
 }
 
 /// Which kinds of events a device can produce; `None` if irrelevant.
-fn device_kind(dev: &Device) -> Option<Kind> {
+pub fn device_kind(dev: &Device) -> Option<Kind> {
     let keys = dev.supported_keys()?;
     if keys.contains(EvKey::KEY_A) && keys.contains(EvKey::KEY_Z) {
         Some(Kind::Keyboard)
@@ -80,7 +78,7 @@ fn event_kind(kind: Kind, code: u16) -> Kind {
     }
 }
 
-fn input_paths() -> Vec<PathBuf> {
+pub fn input_paths() -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::fs::read_dir("/dev/input")
         .into_iter()
         .flatten()

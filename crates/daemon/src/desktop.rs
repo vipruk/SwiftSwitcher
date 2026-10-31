@@ -1,7 +1,5 @@
 //! Client for the GNOME Shell extension's D-Bus interface.
 
-#![allow(dead_code)]
-
 use anyhow::{Context, Result};
 use std::future::Future;
 use std::time::Duration;

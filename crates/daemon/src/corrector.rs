@@ -6,8 +6,6 @@
 //! is switched and confirmed first, and only then are keys sent.
 //! Log lines carry only lengths, verdict reasons, layout ids and app ids.
 
-#![allow(dead_code)] // wired up by the daemon entry point
-
 use crate::config::Config;
 use crate::desktop::Desktop;
 use crate::inject::Injector;

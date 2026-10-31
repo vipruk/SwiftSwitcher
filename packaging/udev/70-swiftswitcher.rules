@@ -1,0 +1,22 @@
+# SwiftSwitcher: device access for the active desktop session, without
+# adding anyone to the `input` group.
+#
+# The `uaccess` tag makes systemd-logind grant a per-session ACL on the
+# tagged device nodes to whoever is logged in at the seat. SwiftSwitcher needs:
+#   - keyboards, to see what is typed (read-only, never grabbed);
+#   - mice, touchpads, touchscreens and tablets, so that clicks and taps reset
+#     its typing state;
+#   - /dev/uinput, to type the corrected text through a virtual keyboard.
+#
+# This file must sort before systemd's 73-seat-late.rules, which acts on the
+# uaccess tag; hence the 70- prefix.
+#
+# Honest note: this lets every program running in your active session read
+# your keyboards and pointers, not only SwiftSwitcher.
+
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_MOUSE}=="1", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHPAD}=="1", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TABLET}=="1", TAG+="uaccess"
+SUBSYSTEM=="misc", KERNEL=="uinput", TAG+="uaccess", OPTIONS+="static_node=uinput"

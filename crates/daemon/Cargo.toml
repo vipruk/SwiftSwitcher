@@ -10,12 +10,14 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
+env_logger = "0.11.11"
 evdev = { version = "0.13.2", features = ["tokio"] }
 log = "0.4.35"
 serde = { version = "1.0.229", features = ["derive"] }
 swift-engine = { version = "0.1.0", path = "../engine" }
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "signal", "macros", "time", "sync"] }
 toml = "1.1.8"
 zbus = { version = "6.2.0", default-features = false, features = ["tokio", "proxy"] }
 

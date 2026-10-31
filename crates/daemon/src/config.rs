@@ -1,5 +1,3 @@
-#![allow(dead_code)] // consumed by later daemon tasks
-
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
