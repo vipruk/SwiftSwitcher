@@ -19,8 +19,9 @@ writes are its config and the dictionary words you explicitly teach it.
 Device access is granted by a udev rule using the `uaccess` tag: the active
 desktop session gets read access to your keyboards, mice and touchpads, and write
 access to `/dev/uinput`. This is honest but broad: **any program running in your
-active session can read those devices, not only SwiftSwitcher.** Remove
-`/etc/udev/rules.d/70-swiftswitcher.rules` to undo it.
+active session can read those devices (see everything you type), and, through
+`/dev/uinput`, create a virtual keyboard that types into any window, not only
+SwiftSwitcher.** Remove `/etc/udev/rules.d/70-swiftswitcher.rules` to undo it.
 
 SwiftSwitcher never grabs devices; your keyboard keeps working normally.
 
@@ -42,8 +43,18 @@ SwiftSwitcher, otherwise both will correct the same word.
 
 Defaults, configurable:
 
-- `Pause`: convert the last word (press again to undo an automatic correction).
-- `Shift+Pause`: convert the selected text between layouts.
+- `Pause`: convert the word you are typing, or the last word. Pressed right
+  after an automatic correction (before typing or clicking anything else), it
+  undoes that correction instead and remembers the word so it is not corrected
+  again.
+- `Shift+Pause`: convert the selected text between layouts and switch to the
+  layout the text is now in.
+
+Hotkeys also work in `excluded_apps`; only automatic correction is off there.
+
+Automatic correction also stays off while no mouse, touchpad or touchscreen can
+be read (a click could move the caret without SwiftSwitcher noticing); the log
+and `swiftswitcher check` say so.
 
 ## Configuration
 
@@ -54,7 +65,7 @@ Defaults, configurable:
 | `auto_correct` | `true` | Correct wrong-layout words automatically |
 | `convert_last` | `"Pause"` | Hotkey: convert the last word |
 | `convert_selection` | `"Shift+Pause"` | Hotkey: convert the selection |
-| `excluded_apps` | password managers | App ids where nothing is corrected |
+| `excluded_apps` | password managers | App ids where nothing is corrected automatically (hotkeys still work) |
 | `terminal_apps` | common terminals | App ids that use terminal paste/copy shortcuts |
 | `idle_reset_secs` | `5` | Pause after which the typed word is forgotten |
 | `settle_ms` | `40` | Wait after switching the layout before typing |

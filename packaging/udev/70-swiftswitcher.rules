@@ -12,7 +12,8 @@
 # uaccess tag; hence the 70- prefix.
 #
 # Honest note: this lets every program running in your active session read
-# your keyboards and pointers, not only SwiftSwitcher.
+# your keyboards and pointers (everything you type), and, through /dev/uinput,
+# create a virtual keyboard that types into any window, not only SwiftSwitcher.
 
 SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", TAG+="uaccess"
 SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_MOUSE}=="1", TAG+="uaccess"
