@@ -37,6 +37,12 @@ pub struct Tracker {
     alt: bool,
     meta: bool,
     caps: bool,
+    /// Bit i: physical modifier key `MOD_KEYS[i]` is down.
+    mod_keys: u8,
+    /// Two or more modifier keys have been down together and no other key
+    /// was pressed since: a modifier-only chord (e.g. `grp:alt_shift_toggle`)
+    /// that may switch the layout when it is released.
+    mod_chord: bool,
     last_input: Option<Instant>,
 }
 
@@ -45,6 +51,7 @@ const CTRLS: [KeyCode; 2] = [29, 97];
 const ALTS: [KeyCode; 2] = [56, 100];
 const METAS: [KeyCode; 2] = [125, 126];
 const KEY_CAPSLOCK: KeyCode = 58;
+const MOD_KEYS: [KeyCode; 8] = [42, 54, 29, 97, 56, 100, 125, 126];
 
 impl Tracker {
     pub fn new(hotkeys: Vec<(Hotkey, HotkeyAction)>, idle: Duration) -> Tracker {
@@ -58,17 +65,37 @@ impl Tracker {
             alt: false,
             meta: false,
             caps: false,
+            mod_keys: 0,
+            mod_chord: false,
             last_input: None,
         }
     }
 
-    fn reset(&mut self) {
+    /// Forgets the current and the last word (the caret may have moved).
+    /// Caps Lock and modifier state are kept: they mirror the keyboard.
+    pub fn reset(&mut self) {
         self.current.clear();
         self.last = None;
     }
 
     /// Returns true if `code` is a modifier and updates its state.
     fn track_modifier(&mut self, code: KeyCode, down: bool) -> bool {
+        if let Some(i) = MOD_KEYS.iter().position(|&m| m == code) {
+            if down {
+                self.mod_keys |= 1 << i;
+                if self.mod_keys.count_ones() >= 2 {
+                    self.mod_chord = true;
+                }
+            } else {
+                self.mod_keys &= !(1 << i);
+                if self.mod_chord {
+                    // A modifier-only chord ended: it may have switched the
+                    // layout, so the buffered strokes may no longer match.
+                    self.mod_chord = false;
+                    self.reset();
+                }
+            }
+        }
         if SHIFTS.contains(&code) {
             self.shift = down;
         } else if CTRLS.contains(&code) {
@@ -118,8 +145,16 @@ impl Tracker {
         if self.track_modifier(code, true) {
             return None;
         }
+        // Any other key pressed during a modifier chord makes it a shortcut.
+        self.mod_chord = false;
         if let Some(action) = self.matching_hotkey(code) {
             return (value == 1).then_some(TrackerEvent::Hotkey(action));
+        }
+        if value == 2 {
+            // Autorepeat is client-side on Wayland (GNOME's delay and rate),
+            // so kernel repeats do not match what reached the screen.
+            self.reset();
+            return None;
         }
         if self.ctrl || self.alt || self.meta {
             self.reset();
@@ -127,9 +162,9 @@ impl Tracker {
         }
         match code {
             KEY_CAPSLOCK => {
-                if value == 1 {
-                    self.caps = !self.caps;
-                }
+                // grp:caps_toggle switches the layout with Caps Lock.
+                self.caps = !self.caps;
+                self.reset();
             }
             KEY_SPACE => {
                 let terminator = Stroke {
@@ -286,11 +321,89 @@ mod tests {
         let mut t = tracker();
         let now = Instant::now();
         feed_text(&mut t, "ghbdtnn", now);
-        key(&mut t, KEY_BACKSPACE, 2, now);
+        tap(&mut t, KEY_BACKSPACE, now);
         match feed_text(&mut t, " ", now).unwrap() {
             TrackerEvent::WordEnded { word, .. } => assert_eq!(word.len(), 6),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn held_backspace_resets() {
+        // One repeat may delete any number of characters on screen.
+        let mut t = tracker();
+        let now = Instant::now();
+        feed_text(&mut t, "x ghbdtnn", now);
+        key(&mut t, KEY_BACKSPACE, 1, now);
+        key(&mut t, KEY_BACKSPACE, 2, now);
+        assert_reset(&t);
+    }
+
+    #[test]
+    fn held_letter_resets() {
+        let (mut t, now) = filled();
+        key(&mut t, 30, 1, now);
+        key(&mut t, 30, 2, now);
+        assert_reset(&t);
+        key(&mut t, 30, 0, now);
+        assert_eq!(feed_text(&mut t, "b", now), None);
+        assert_eq!(t.current_word().len(), 1);
+    }
+
+    #[test]
+    fn modifier_repeat_does_not_reset() {
+        let (mut t, now) = filled();
+        key(&mut t, 42, 1, now);
+        key(&mut t, 42, 2, now);
+        key(&mut t, 42, 0, now);
+        assert!(t.last_word().is_some());
+        assert_eq!(t.current_word().len(), 3);
+    }
+
+    #[test]
+    fn caps_lock_resets_and_toggles() {
+        // grp:caps_toggle switches the layout with Caps Lock.
+        let (mut t, now) = filled();
+        tap(&mut t, KEY_CAPSLOCK, now);
+        assert_reset(&t);
+        feed_text(&mut t, "a", now);
+        assert!(t.current_word()[0].caps);
+    }
+
+    #[test]
+    fn modifier_only_chord_resets_on_release() {
+        // grp:alt_shift_toggle, grp:ctrl_shift_toggle, grp:shifts_toggle.
+        for (a, b) in [(56, 42), (42, 56), (29, 42), (42, 54), (97, 54)] {
+            let (mut t, now) = filled();
+            key(&mut t, a, 1, now);
+            key(&mut t, b, 1, now);
+            assert_eq!(t.current_word().len(), 3, "nothing yet while held");
+            key(&mut t, b, 0, now);
+            assert_reset(&t);
+            // Releasing the other modifier does not reset a second time.
+            key(&mut t, a, 0, now);
+            assert_reset(&t);
+        }
+    }
+
+    #[test]
+    fn single_modifier_tap_does_not_reset() {
+        for m in [42, 54, 29, 56, 125] {
+            let (mut t, now) = filled();
+            tap(&mut t, m, now);
+            assert!(t.last_word().is_some());
+            assert_eq!(t.current_word().len(), 3);
+        }
+    }
+
+    #[test]
+    fn shift_typing_is_not_a_chord() {
+        let mut t = tracker();
+        let now = Instant::now();
+        key(&mut t, 42, 1, now);
+        feed_text(&mut t, "ab", now);
+        key(&mut t, 42, 0, now);
+        assert_eq!(t.current_word().len(), 2);
     }
 
     #[test]
@@ -390,7 +503,7 @@ mod tests {
         );
         assert!(t.last_word().is_some());
         assert_eq!(t.current_word().len(), 3);
-        // repeat ignored
+        // a hotkey's repeat is ignored and does not reset
         assert_eq!(key(&mut t, 119, 2, now), None);
         assert_eq!(t.current_word().len(), 3);
         key(&mut t, 119, 0, now);
@@ -463,11 +576,11 @@ mod tests {
         feed_text(&mut t, "a", now);
         assert!(t.current_word()[0].caps);
         assert!(!t.current_word()[0].shift);
-        tap(&mut t, 58, now);
+        tap(&mut t, 58, now); // also resets the buffer (finding 3)
         key(&mut t, 54, 1, now);
         tap(&mut t, 30, now);
-        assert!(!t.current_word()[1].caps);
-        assert!(t.current_word()[1].shift);
+        assert!(!t.current_word()[0].caps);
+        assert!(t.current_word()[0].shift);
     }
 
     #[test]
