@@ -10,6 +10,7 @@ import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 
+import {pickMimetype} from './clipboard.js';
 import {convertText} from './keymap.js';
 
 const BUS_NAME = 'io.github.vipruk.SwiftSwitcher.Shell';
@@ -45,9 +46,19 @@ const IFACE_XML = `
 
 const CLIPBOARD = St.ClipboardType.CLIPBOARD;
 
+// Saved clipboard contents are dropped after this many seconds even if
+// SelectionEnd never arrives (e.g. the daemon died mid-cycle).
+const SAVE_TIMEOUT_SECONDS = 5;
+
 function readClipboard() {
     return new Promise(resolve => {
         St.Clipboard.get_default().get_text(CLIPBOARD, (_clipboard, text) => resolve(text));
+    });
+}
+
+function readContent(mimetype) {
+    return new Promise(resolve => {
+        St.Clipboard.get_default().get_content(CLIPBOARD, mimetype, (_clipboard, bytes) => resolve(bytes));
     });
 }
 
@@ -61,12 +72,37 @@ function returnBoolean(invocation, value) {
 
 class ShellBridge {
     constructor() {
-        // Clipboard text saved by SelectionBegin; null when nothing is saved.
+        // Clipboard contents saved by SelectionBegin: {mimetype, bytes}, with
+        // mimetype null if the clipboard was empty. null when nothing is saved.
         this._saved = null;
+        this._saveTimeoutId = 0;
     }
 
     destroy() {
+        this._dropSaved();
+    }
+
+    _dropSaved() {
+        if (this._saveTimeoutId) {
+            GLib.source_remove(this._saveTimeoutId);
+            this._saveTimeoutId = 0;
+        }
         this._saved = null;
+    }
+
+    async _saveClipboard() {
+        const mimetype = pickMimetype(St.Clipboard.get_default().get_mimetypes(CLIPBOARD));
+        const bytes = mimetype ? await readContent(mimetype) : null;
+        // Another Begin may have saved while we were waiting.
+        if (this._saved !== null)
+            return;
+        this._saved = bytes ? {mimetype, bytes} : {mimetype: null, bytes: null};
+        this._saveTimeoutId = GLib.timeout_add_seconds(
+            GLib.PRIORITY_DEFAULT, SAVE_TIMEOUT_SECONDS, () => {
+                this._saveTimeoutId = 0;
+                this._saved = null;
+                return GLib.SOURCE_REMOVE;
+            });
     }
 
     _sources() {
@@ -100,9 +136,10 @@ class ShellBridge {
 
     async SelectionBeginAsync(_params, invocation) {
         try {
-            // A repeated Begin must not overwrite the original with our own "".
+            // A repeated Begin within the same cycle (save timeout still live)
+            // must not overwrite the original with our own "".
             if (this._saved === null)
-                this._saved = (await readClipboard()) ?? '';
+                await this._saveClipboard();
             writeClipboard('');
             returnBoolean(invocation, true);
         } catch (e) {
@@ -129,8 +166,11 @@ class ShellBridge {
     SelectionEnd() {
         if (this._saved === null)
             return false;
-        writeClipboard(this._saved);
-        this._saved = null;
+        const {mimetype, bytes} = this._saved;
+        this._dropSaved();
+        // An originally empty clipboard is left as it is.
+        if (mimetype)
+            St.Clipboard.get_default().set_content(CLIPBOARD, mimetype, bytes);
         return true;
     }
 }
