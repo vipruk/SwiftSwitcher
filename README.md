@@ -45,8 +45,8 @@ Defaults, configurable:
 
 - `Pause`: convert the word you are typing, or the last word. Pressed right
   after an automatic correction (before typing or clicking anything else), it
-  undoes that correction instead and remembers the word so it is not corrected
-  again.
+  undoes that correction instead. After the same word is undone three times
+  (`learn_after_undos`), it is remembered and no longer corrected.
 - `Shift+Pause`: convert the selected text between layouts and switch to the
   layout the text is now in.
 
@@ -69,9 +69,10 @@ and `swiftswitcher check` say so.
 | `terminal_apps` | common terminals | App ids that use terminal paste/copy shortcuts |
 | `idle_reset_secs` | `5` | Pause after which the typed word is forgotten |
 | `settle_ms` | `40` | Wait after switching the layout before typing |
+| `learn_after_undos` | `3` | Undos of the same word before it is never corrected again |
 
 Dictionary words you teach it live in `~/.local/share/swiftswitcher/never.txt`
-and `always.txt`.
+and `always.txt`; `undos.txt` counts undos of words not learned yet.
 
 ## License
 

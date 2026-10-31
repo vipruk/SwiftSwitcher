@@ -566,7 +566,8 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
         Ok(())
     }
 
-    /// Restores the original text of the last correction and learns the word.
+    /// Restores the original text of the last correction; after
+    /// `learn_after_undos` undos the word goes to the never list.
     async fn undo(&mut self, c: Correction) -> Result<()> {
         let erase = c.strokes.len() + 1;
         let undone = self
@@ -582,10 +583,15 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             return Ok(());
         }
         let typed: Option<String> = c.strokes.iter().map(|&s| char_for(s, c.from)).collect();
-        if let Some(typed) = typed
-            && let Err(e) = self.dict.add_never(&self.data_dir, &typed.to_lowercase())
-        {
-            log::warn!("cannot update the never list: {e}");
+        if let Some(typed) = typed {
+            match self
+                .dict
+                .record_undo(&self.data_dir, &typed, self.config.learn_after_undos)
+            {
+                Ok(true) => log::info!("undo: word added to the never list"),
+                Ok(false) => {}
+                Err(e) => log::warn!("cannot update the never list: {e}"),
+            }
         }
         Ok(())
     }
@@ -1233,19 +1239,39 @@ mod tests {
     // ---- Pause: undo and manual convert ----
 
     #[tokio::test(start_paused = true)]
-    async fn pause_right_after_correction_undoes_and_learns() {
+    async fn pause_right_after_correction_undoes_and_learns_on_third_undo() {
         let mut r = rig(Setup::default());
-        r.type_text("ghbdtn ").await;
-        r.tap(KEY_PAUSE).await;
-        let mut want = correction_ops("ghbdtn");
-        want.extend(correction_ops("ghbdtn"));
-        assert_eq!(r.ops(), want);
-        assert_eq!(r.calls(), strings(&["set_layout ru", "set_layout us"]));
-        let never = std::fs::read_to_string(r.dir.path().join("never.txt")).unwrap();
+        let never = r.dir.path().join("never.txt");
+        let mut want = Vec::new();
+        for round in 1..=3 {
+            r.type_text("ghbdtn ").await;
+            r.tap(KEY_PAUSE).await;
+            want.extend(correction_ops("ghbdtn"));
+            want.extend(correction_ops("ghbdtn"));
+            assert_eq!(r.ops(), want, "round {round}");
+            assert_eq!(never.exists(), round == 3, "round {round}");
+        }
+        let never = std::fs::read_to_string(never).unwrap();
         assert_eq!(never.lines().collect::<Vec<_>>(), vec!["ghbdtn"]);
         // Learned: the same word now stays as typed.
         r.type_text("ghbdtn ").await;
         assert_eq!(r.ops(), want);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn learn_after_one_undo_when_configured() {
+        let mut r = rig(Setup {
+            config: Config {
+                learn_after_undos: 1,
+                ..Config::default()
+            },
+            ..Setup::default()
+        });
+        r.type_text("ghbdtn ").await;
+        r.tap(KEY_PAUSE).await;
+        let before = r.ops().len();
+        r.type_text("ghbdtn ").await;
+        assert_eq!(r.ops().len(), before);
     }
 
     #[tokio::test(start_paused = true)]
