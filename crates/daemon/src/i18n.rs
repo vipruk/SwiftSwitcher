@@ -4,6 +4,8 @@
 // Consumers arrive in later tasks.
 #![allow(dead_code)]
 
+use crate::status::Problem;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
     En,
@@ -24,10 +26,19 @@ impl Lang {
 pub enum Msg {
     AppName,
     AutoCorrection,
+    ProblemExtension,
+    ProblemLayouts,
+    ProblemPointer,
 }
 
 impl Msg {
-    pub const ALL: &'static [Msg] = &[Msg::AppName, Msg::AutoCorrection];
+    pub const ALL: &'static [Msg] = &[
+        Msg::AppName,
+        Msg::AutoCorrection,
+        Msg::ProblemExtension,
+        Msg::ProblemLayouts,
+        Msg::ProblemPointer,
+    ];
 
     /// Proper names that read the same in every language.
     fn is_proper_name(self) -> bool {
@@ -40,7 +51,29 @@ pub fn tr(lang: Lang, m: Msg) -> &'static str {
         (Msg::AppName, _) => "SwiftSwitcher",
         (Msg::AutoCorrection, Lang::En) => "Auto-correction",
         (Msg::AutoCorrection, Lang::Ru) => "Автоисправление",
+        (Msg::ProblemExtension, Lang::En) => "The GNOME Shell extension is not reachable",
+        (Msg::ProblemExtension, Lang::Ru) => "Расширение GNOME Shell недоступно",
+        (Msg::ProblemLayouts, Lang::En) => {
+            "Exactly two input sources are required: English (US) and Russian"
+        }
+        (Msg::ProblemLayouts, Lang::Ru) => "Нужны ровно две раскладки: английская (US) и русская",
+        (Msg::ProblemPointer, Lang::En) => {
+            "No pointer device is readable, so automatic correction is off"
+        }
+        (Msg::ProblemPointer, Lang::Ru) => {
+            "Мышь или тачпад недоступны, поэтому автоисправление выключено"
+        }
     }
+}
+
+/// UI text for a status problem, for the tray and the settings window.
+pub fn problem_text(lang: Lang, p: Problem) -> &'static str {
+    let m = match p {
+        Problem::Extension => Msg::ProblemExtension,
+        Problem::Layouts => Msg::ProblemLayouts,
+        Problem::Pointer => Msg::ProblemPointer,
+    };
+    tr(lang, m)
 }
 
 #[cfg(test)]
@@ -53,6 +86,27 @@ mod tests {
         assert_eq!(Lang::from_config(""), Lang::En);
         assert_eq!(Lang::from_config("en"), Lang::En);
         assert_eq!(Lang::from_config("ru"), Lang::Ru);
+    }
+
+    #[test]
+    fn problem_text_per_reason() {
+        assert_eq!(
+            problem_text(Lang::En, Problem::Extension),
+            tr(Lang::En, Msg::ProblemExtension)
+        );
+        assert_eq!(
+            problem_text(Lang::Ru, Problem::Layouts),
+            tr(Lang::Ru, Msg::ProblemLayouts)
+        );
+        assert_eq!(
+            problem_text(Lang::Ru, Problem::Pointer),
+            tr(Lang::Ru, Msg::ProblemPointer)
+        );
+        let en: std::collections::HashSet<_> = Problem::ALL
+            .iter()
+            .map(|&p| problem_text(Lang::En, p))
+            .collect();
+        assert_eq!(en.len(), Problem::ALL.len(), "distinct texts");
     }
 
     #[test]

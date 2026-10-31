@@ -1,6 +1,8 @@
 //! The daemon's own D-Bus service: single instance, status and quit.
 
 use crate::Command;
+#[cfg(test)]
+use crate::status::Problem;
 use crate::status::Status;
 use tokio::sync::{mpsc, watch};
 use zbus::fdo::RequestNameFlags;
@@ -28,10 +30,14 @@ struct Daemon {
 
 #[zbus::interface(name = "io.github.vipruk.SwiftSwitcher.Daemon")]
 impl Daemon {
-    /// (auto_correct, problem); problem is "" when there is none.
+    /// (auto_correct, problem code); the code is "" when there is no problem,
+    /// else "extension", "layouts" or "pointer" (see `Problem::code`).
     fn status(&self) -> (bool, String) {
         let s = self.status.borrow();
-        (s.auto_correct, s.problem.clone().unwrap_or_default())
+        (
+            s.auto_correct,
+            s.problem.map_or("", |p| p.code()).to_string(),
+        )
     }
 
     async fn quit(&self) {
@@ -139,11 +145,11 @@ mod tests {
         assert_eq!(proxy.status().await.unwrap(), (true, String::new()));
         status_tx.send_replace(Status {
             auto_correct: false,
-            problem: Some("no pointer device".into()),
+            problem: Some(Problem::Pointer),
         });
         assert_eq!(
             proxy.status().await.unwrap(),
-            (false, "no pointer device".to_string())
+            (false, "pointer".to_string())
         );
         proxy.quit().await.unwrap();
         assert!(matches!(cmd_rx.recv().await, Some(Command::Quit)));
