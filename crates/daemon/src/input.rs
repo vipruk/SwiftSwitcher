@@ -51,6 +51,14 @@ pub fn classify(code: u16, value: i32, device_kind: Kind) -> Option<Input> {
     }
 }
 
+/// Full per-event filter used by the stream loop: only EV_KEY events matter.
+fn relevant(ev_type: EventType, code: u16, value: i32, kind: Kind) -> Option<Input> {
+    if ev_type != EventType::KEY {
+        return None;
+    }
+    classify(code, value, event_kind(kind, code))
+}
+
 /// Which kinds of events a device can produce; `None` if irrelevant.
 fn device_kind(dev: &Device) -> Option<Kind> {
     let keys = dev.supported_keys()?;
@@ -137,11 +145,8 @@ pub fn spawn_reader(tx: Sender<Physical>) -> anyhow::Result<()> {
                 let (tx, open, p) = (tx.clone(), open.clone(), path.clone());
                 tokio::spawn(async move {
                     while let Ok(ev) = stream.next_event().await {
-                        if ev.event_type() != EventType::KEY {
-                            continue;
-                        }
-                        let code = ev.code();
-                        let Some(input) = classify(code, ev.value(), event_kind(kind, code)) else {
+                        let Some(input) = relevant(ev.event_type(), ev.code(), ev.value(), kind)
+                        else {
                             continue;
                         };
                         let at = Instant::now();
@@ -199,10 +204,28 @@ mod tests {
     }
 
     #[test]
-    fn non_key_codes_ignored() {
-        // MSC_SCAN (4) arrives as a non-KEY event and is filtered before
-        // classify; codes outside the BTN range are ignored too.
+    fn codes_outside_btn_range_ignored() {
         assert!(classify(0x170, 1, Kind::Pointer).is_none());
+    }
+
+    #[test]
+    fn msc_events_ignored() {
+        // MSC_SCAN is code 4; with EV_KEY it would look like a key.
+        assert!(relevant(EventType::MISC, 4, 0x70004, Kind::Keyboard).is_none());
+        assert!(relevant(EventType::MISC, 0x110, 1, Kind::Pointer).is_none());
+        assert!(relevant(EventType::SYNCHRONIZATION, 0, 0, Kind::Keyboard).is_none());
+    }
+
+    #[test]
+    fn relevant_passes_key_events() {
+        assert!(matches!(
+            relevant(EventType::KEY, 30, 1, Kind::Keyboard),
+            Some(Input::Key { code: 30, value: 1 })
+        ));
+        assert!(matches!(
+            relevant(EventType::KEY, 0x110, 1, Kind::Keyboard),
+            Some(Input::PointerButton)
+        ));
     }
 
     #[test]
