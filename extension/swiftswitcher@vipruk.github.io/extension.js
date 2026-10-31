@@ -10,7 +10,7 @@ import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 
-import {pickMimetype} from './clipboard.js';
+import {ClipboardSaver, isWholeLineCopy} from './clipboard.js';
 import {convertText, targetSource} from './keymap.js';
 
 const BUS_NAME = 'io.github.vipruk.SwiftSwitcher.Shell';
@@ -66,6 +66,20 @@ function writeClipboard(text) {
     St.Clipboard.get_default().set_text(CLIPBOARD, text);
 }
 
+const CLIPBOARD_IO = {
+    mimetypes: () => St.Clipboard.get_default().get_mimetypes(CLIPBOARD),
+    read: readContent,
+    clear: () => writeClipboard(''),
+    restore: (mimetype, bytes) =>
+        St.Clipboard.get_default().set_content(CLIPBOARD, mimetype, bytes),
+    addTimeout: (seconds, fn) => GLib.timeout_add_seconds(
+        GLib.PRIORITY_DEFAULT, seconds, () => {
+            fn();
+            return GLib.SOURCE_REMOVE;
+        }),
+    removeTimeout: id => GLib.source_remove(id),
+};
+
 function returnBoolean(invocation, value) {
     invocation.return_value(new GLib.Variant('(b)', [value]));
 }
@@ -76,37 +90,11 @@ function returnString(invocation, value) {
 
 class ShellBridge {
     constructor() {
-        // Clipboard contents saved by SelectionBegin: {mimetype, bytes}, with
-        // mimetype null if the clipboard was empty. null when nothing is saved.
-        this._saved = null;
-        this._saveTimeoutId = 0;
+        this._saver = new ClipboardSaver(CLIPBOARD_IO, SAVE_TIMEOUT_SECONDS);
     }
 
     destroy() {
-        this._dropSaved();
-    }
-
-    _dropSaved() {
-        if (this._saveTimeoutId) {
-            GLib.source_remove(this._saveTimeoutId);
-            this._saveTimeoutId = 0;
-        }
-        this._saved = null;
-    }
-
-    async _saveClipboard() {
-        const mimetype = pickMimetype(St.Clipboard.get_default().get_mimetypes(CLIPBOARD));
-        const bytes = mimetype ? await readContent(mimetype) : null;
-        // Another Begin may have saved while we were waiting.
-        if (this._saved !== null)
-            return;
-        this._saved = bytes ? {mimetype, bytes} : {mimetype: null, bytes: null};
-        this._saveTimeoutId = GLib.timeout_add_seconds(
-            GLib.PRIORITY_DEFAULT, SAVE_TIMEOUT_SECONDS, () => {
-                this._saveTimeoutId = 0;
-                this._saved = null;
-                return GLib.SOURCE_REMOVE;
-            });
+        this._saver.destroy();
     }
 
     _sources() {
@@ -140,12 +128,7 @@ class ShellBridge {
 
     async SelectionBeginAsync(_params, invocation) {
         try {
-            // A repeated Begin within the same cycle (save timeout still live)
-            // must not overwrite the original with our own "".
-            if (this._saved === null)
-                await this._saveClipboard();
-            writeClipboard('');
-            returnBoolean(invocation, true);
+            returnBoolean(invocation, await this._saver.begin());
         } catch (e) {
             console.error(`SwiftSwitcher: SelectionBegin failed: ${e.name}`);
             returnBoolean(invocation, false);
@@ -157,7 +140,8 @@ class ShellBridge {
     async SelectionConvertAsync(_params, invocation) {
         try {
             const text = await readClipboard();
-            if (!text) {
+            // Nothing selected: empty, or an editor copied the whole line.
+            if (!text || isWholeLineCopy(text)) {
                 returnString(invocation, '');
                 return;
             }
@@ -170,14 +154,7 @@ class ShellBridge {
     }
 
     SelectionEnd() {
-        if (this._saved === null)
-            return false;
-        const {mimetype, bytes} = this._saved;
-        this._dropSaved();
-        // An originally empty clipboard is left as it is.
-        if (mimetype)
-            St.Clipboard.get_default().set_content(CLIPBOARD, mimetype, bytes);
-        return true;
+        return this._saver.end();
     }
 }
 
