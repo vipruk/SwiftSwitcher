@@ -4,6 +4,9 @@ on:
     tags: ['v*']
     branches: ['**']
   pull_request:
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -38,11 +41,18 @@ jobs:
       - run: cargo deb -p swiftswitcher
       - run: cargo build --release -p swiftswitcher
       - name: Download appimagetool
-        # The maintainer pins the tool by setting APPIMAGETOOL_SHA256 below;
-        # while it is empty the download is not verified.
+        # The maintainer pins the tool by setting APPIMAGETOOL_SHA256 below.
+        # While it is empty, branch builds warn and tag (release) builds fail.
         env:
           APPIMAGETOOL_SHA256: ""
         run: |
+          if [ -z "$APPIMAGETOOL_SHA256" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+              echo "::error::APPIMAGETOOL_SHA256 is empty; a release needs a pinned appimagetool"
+              exit 1
+            fi
+            echo "::warning::APPIMAGETOOL_SHA256 is empty; appimagetool is not verified"
+          fi
           curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           if [ -n "$APPIMAGETOOL_SHA256" ]; then
