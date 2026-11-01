@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: check
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Install system dependencies
@@ -59,10 +59,19 @@ jobs:
           path: |
             target/debian/*.deb
             target/SwiftSwitcher-*-x86_64.AppImage
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/debian/*.deb
-            target/SwiftSwitcher-*-x86_64.AppImage
+            dist/**/*.deb
+            dist/**/*.AppImage
