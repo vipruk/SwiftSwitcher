@@ -62,7 +62,6 @@ impl Config {
         }
     }
 
-    #[allow(dead_code)] // used by the settings window (later task)
     /// Atomic: writes `<name>.tmp` next to the file, then renames it.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         let text = toml::to_string_pretty(self).context("serializing config")?;

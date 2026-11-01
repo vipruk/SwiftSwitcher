@@ -9,6 +9,7 @@ mod paths;
 mod reload;
 mod service;
 mod status;
+mod tray;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -78,7 +79,7 @@ async fn run() -> Result<()> {
         problem: None,
     });
     let (cmd_tx, mut cmd_rx) = mpsc::channel(16);
-    service::serve(&conn, status_rx, cmd_tx.clone()).await?;
+    service::serve(&conn, status_rx.clone(), cmd_tx.clone()).await?;
     if !service::acquire(&conn).await? {
         log::info!("swiftswitcher is already running");
         return Ok(());
@@ -123,6 +124,7 @@ async fn run() -> Result<()> {
         config_rx,
         status_tx,
     ));
+    tray::spawn(status_rx, cmd_tx.clone()).await?;
     tokio::spawn(watcher.run(RELOAD_POLL, cmd_tx));
     log::info!("swiftswitcher running");
 
