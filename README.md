@@ -50,6 +50,9 @@ libraries, but Ubuntu 24.04 (GNOME 46) and KDE support are planned, not done.
 
 Then open SwiftSwitcher from the app grid. The settings window runs the setup
 check, enables the GNOME extension and asks you to log out and back in once.
+The first time it opens, it also turns on Start on login, so SwiftSwitcher starts
+by itself after that relogin; turn the switch off in General if you don't want
+that.
 
 Uninstall with `sudo apt remove swiftswitcher`. If you enabled autostart, also
 remove `~/.config/autostart/io.github.vipruk.SwiftSwitcher.desktop`.
@@ -64,7 +67,9 @@ GNOME 50 on Ubuntu 26.04, as above.
 2. `chmod +x SwiftSwitcher-*-x86_64.AppImage`
 3. Run it. The first run opens the settings window, which offers a `pkexec` step
    to install the udev rule and a button to install the GNOME extension. Log out
-   and back in once afterwards.
+   and back in once afterwards. Start on login is turned on the first time the
+   settings window opens, so SwiftSwitcher starts by itself from then on; turn
+   it off in General if you don't want that.
 
 ## Development install
 

@@ -22,6 +22,35 @@ pub fn autostart_dir() -> PathBuf {
         .join("autostart")
 }
 
+/// `$XDG_STATE_HOME/swiftswitcher/autostart-initialized` (falling back to
+/// `~/.local/state`): present once autostart has been turned on by default.
+pub fn marker_path() -> PathBuf {
+    dirs::state_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join(".local").join("state")))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("swiftswitcher")
+        .join("autostart-initialized")
+}
+
+/// Start on login is on by default: the first time (no `marker`), an entry
+/// is written unless one exists, then the marker. Once the marker exists
+/// nothing changes, so turning the switch off later is respected.
+/// Returns whether an entry was written.
+pub fn init_default(dir: &Path, marker: &Path, exec: &Path) -> io::Result<bool> {
+    if marker.exists() {
+        return Ok(false);
+    }
+    let write = !is_enabled(dir);
+    if write {
+        set_enabled(dir, exec, true)?;
+    }
+    if let Some(parent) = marker.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(marker, "")?;
+    Ok(write)
+}
+
 /// `Exec="<exec>" run`, quoted per the Desktop Entry spec: inside the
 /// quotes `"`, `` ` ``, `$` and `\` take a backslash, and the string-value
 /// escaping (undone first by readers) doubles every backslash once more, so
@@ -128,6 +157,34 @@ mod tests {
         assert!(!is_enabled(&auto));
         // Disabling twice is fine.
         set_enabled(&auto, exec, false).unwrap();
+    }
+
+    #[test]
+    fn first_open_enables_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let auto = dir.path().join("autostart");
+        let marker = dir.path().join("state/swiftswitcher/autostart-initialized");
+        let exec = Path::new("/usr/bin/swiftswitcher");
+        // No marker, no entry: enable and write the marker.
+        assert!(init_default(&auto, &marker, exec).unwrap());
+        assert!(is_enabled(&auto));
+        assert!(marker.is_file());
+        // The user turns it off; the marker keeps it off.
+        set_enabled(&auto, exec, false).unwrap();
+        assert!(!init_default(&auto, &marker, exec).unwrap());
+        assert!(!is_enabled(&auto));
+    }
+
+    #[test]
+    fn first_open_keeps_existing_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let auto = dir.path().join("autostart");
+        let marker = dir.path().join("autostart-initialized");
+        let old = Path::new("/opt/old/swiftswitcher");
+        set_enabled(&auto, old, true).unwrap();
+        assert!(!init_default(&auto, &marker, Path::new("/usr/bin/swiftswitcher")).unwrap());
+        assert!(!is_stale(&auto, old), "the existing entry is not rewritten");
+        assert!(marker.is_file());
     }
 
     #[test]

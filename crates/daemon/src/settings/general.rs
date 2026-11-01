@@ -21,13 +21,19 @@ const DAEMON_POLL: Duration = Duration::from_secs(3);
 /// Gives a freshly started daemon time to own its bus name.
 const START_SETTLE: Duration = Duration::from_secs(1);
 
-/// Once per window: an enabled entry that starts an old path (say, an
-/// AppImage that moved) is rewritten for this executable.
+/// Once per window: the first open ever turns Start on login on (R8), and
+/// an enabled entry that starts an old path (say, an AppImage that moved)
+/// is rewritten for this executable.
 pub(super) fn on_open() {
     let dir = autostart::autostart_dir();
     let exec = autostart::exec_path();
     if autostart::is_enabled(&dir) && autostart::is_stale(&dir, &exec) {
         match autostart::set_enabled(&dir, &exec, true) {
+    match autostart::init_default(&dir, &autostart::marker_path(), &exec) {
+        Ok(true) => log::info!("start on login turned on by default"),
+        Ok(false) => {}
+        Err(e) => log::warn!("cannot set up start on login: {e}"),
+    }
             Ok(()) => log::info!("autostart entry updated for {}", exec.display()),
             Err(e) => log::warn!("cannot update the autostart entry: {e}"),
         }
