@@ -92,20 +92,27 @@ mod tests {
         }
     }
 
-    fn private_bus() -> Bus {
-        let mut child = std::process::Command::new("dbus-daemon")
+    /// A private session bus, or `None` (with a note) without `dbus-daemon`.
+    fn private_bus() -> Option<Bus> {
+        let spawned = std::process::Command::new("dbus-daemon")
             .args(["--session", "--print-address", "--nofork"])
             .stdout(Stdio::piped())
-            .spawn()
-            .expect("dbus-daemon must be installed to run this test");
+            .spawn();
+        let mut child = match spawned {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("skipping: cannot run dbus-daemon ({e})");
+                return None;
+            }
+        };
         let mut line = String::new();
         BufReader::new(child.stdout.take().unwrap())
             .read_line(&mut line)
             .unwrap();
-        Bus {
+        Some(Bus {
             child,
             address: line.trim().to_string(),
-        }
+        })
     }
 
     async fn connect(bus: &Bus) -> zbus::Connection {
@@ -117,7 +124,9 @@ mod tests {
 
     #[tokio::test]
     async fn second_instance_exits() {
-        let bus = private_bus();
+        let Some(bus) = private_bus() else {
+            return;
+        };
         let first = connect(&bus).await;
         let second = connect(&bus).await;
         assert!(
@@ -132,7 +141,9 @@ mod tests {
 
     #[tokio::test]
     async fn status_and_quit_over_dbus() {
-        let bus = private_bus();
+        let Some(bus) = private_bus() else {
+            return;
+        };
         let daemon = connect(&bus).await;
         let (status_tx, status_rx) = watch::channel(Status {
             auto_correct: true,

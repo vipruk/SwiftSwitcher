@@ -46,15 +46,6 @@ fn dev_root() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
 }
 
-#[allow(dead_code)] // for packaging tasks
-pub fn resource_root() -> PathBuf {
-    match root() {
-        Root::AppImage(p) => p,
-        Root::System => PathBuf::from("/usr/share/swiftswitcher"),
-        Root::Dev => dev_root(),
-    }
-}
-
 fn resolve(root: &Root, installed: &str, dev: &str) -> PathBuf {
     match root {
         Root::AppImage(p) => p.join(installed),

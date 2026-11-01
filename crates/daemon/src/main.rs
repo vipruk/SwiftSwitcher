@@ -137,7 +137,14 @@ async fn run() -> Result<()> {
         config_rx,
         status_tx,
     ));
-    tray::spawn(status_rx, cmd_tx.clone()).await?;
+    // Off the startup path: a slow StatusNotifierWatcher must not delay
+    // the event loop.
+    let tray_tx = cmd_tx.clone();
+    tokio::spawn(async move {
+        if let Err(e) = tray::spawn(status_rx, tray_tx).await {
+            log::warn!("tray icon failed: {e:#}");
+        }
+    });
     tokio::spawn(watcher.run(RELOAD_POLL, cmd_tx));
     log::info!("swiftswitcher running");
 
