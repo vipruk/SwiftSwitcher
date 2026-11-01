@@ -11,6 +11,16 @@ pub struct Hotkey {
     pub meta: bool,
 }
 
+/// Why a hotkey is refused as a binding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unsafe {
+    /// A letter or Space without Ctrl, Alt or Meta: it types text.
+    Typing,
+    /// A letter or Space with Ctrl (and maybe Shift) only: an application
+    /// shortcut such as Ctrl+A, or the Ctrl(+Shift)+C/V the daemon injects.
+    AppShortcut,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HotkeyAction {
     ConvertLast,
@@ -40,6 +50,21 @@ impl Hotkey {
             *flag = true;
         }
         Ok(h)
+    }
+
+    /// Whether the hotkey is safe to bind. Hotkeys are never swallowed, so a
+    /// key that types text or an application shortcut would fire on normal
+    /// use. Non-typing keys (Pause, ScrollLock, Insert, F1-F12) are fine with
+    /// any modifiers; a letter or Space needs Alt or Meta.
+    pub fn check_safe(&self) -> Result<(), Unsafe> {
+        let typing = self.code == 57 || is_letter(self.code);
+        if !typing || self.alt || self.meta {
+            Ok(())
+        } else if self.ctrl {
+            Err(Unsafe::AppShortcut)
+        } else {
+            Err(Unsafe::Typing)
+        }
     }
 
     /// Canonical form: `Ctrl+Alt+Shift+Meta+Key`. Parses back to the same hotkey
@@ -72,6 +97,10 @@ const LETTERS: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
+
+fn is_letter(code: KeyCode) -> bool {
+    key_name(code).is_some_and(|n| n.len() == 1)
+}
 
 /// Canonical name of a supported hotkey key, `None` for anything else.
 pub fn key_name(code: KeyCode) -> Option<&'static str> {
@@ -171,6 +200,45 @@ mod tests {
             }
         }
         assert_eq!(key_name(127), None);
+    }
+
+    fn safety(s: &str) -> Result<(), Unsafe> {
+        Hotkey::parse(s).unwrap().check_safe()
+    }
+
+    #[test]
+    fn refuses_typing_and_app_shortcuts() {
+        for s in ["A", "Space", "Shift+A", "Shift+Space", "Q"] {
+            assert_eq!(safety(s), Err(Unsafe::Typing), "{s}");
+        }
+        for s in [
+            "Ctrl+A",
+            "Ctrl+Shift+A",
+            "Ctrl+C",
+            "Ctrl+Shift+V",
+            "Ctrl+Space",
+        ] {
+            assert_eq!(safety(s), Err(Unsafe::AppShortcut), "{s}");
+        }
+    }
+
+    #[test]
+    fn accepts_safe_bindings() {
+        for s in [
+            "Ctrl+Alt+Space",
+            "Alt+Q",
+            "Meta+Space",
+            "Pause",
+            "Shift+Pause",
+            "F9",
+            "Ctrl+F9",
+            "ScrollLock",
+            "Insert",
+            "F12",
+            "Ctrl+Meta+A",
+        ] {
+            assert_eq!(safety(s), Ok(()), "{s}");
+        }
     }
 
     #[test]

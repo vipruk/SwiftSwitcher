@@ -6,7 +6,7 @@ use crate::i18n::{Lang, Msg, tr};
 use adw::prelude::*;
 use gtk::{gdk, glib};
 use std::rc::Rc;
-use swift_engine::hotkey::{Hotkey, key_name};
+use swift_engine::hotkey::{Hotkey, Unsafe, key_name};
 
 /// Modifier keys held during a key press.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -21,6 +21,8 @@ pub(super) struct Mods {
 pub(super) enum CaptureError {
     ModifierOnly,
     Unsupported,
+    /// The key would fire during normal typing or app shortcuts (R9).
+    Unsafe(Unsafe),
 }
 
 /// evdev codes of Ctrl, Shift, Alt and Super keys, both sides.
@@ -37,13 +39,15 @@ pub(super) fn capture(keycode: u32, mods: Mods) -> Result<Hotkey, CaptureError> 
         return Err(CaptureError::ModifierOnly);
     }
     key_name(code).ok_or(CaptureError::Unsupported)?;
-    Ok(Hotkey {
+    let h = Hotkey {
         code,
         shift: mods.shift,
         ctrl: mods.ctrl,
         alt: mods.alt,
         meta: mods.meta,
-    })
+    };
+    h.check_safe().map_err(CaptureError::Unsafe)?;
+    Ok(h)
 }
 
 /// Whether `new` equals the binding `other` (a config string).
@@ -237,6 +241,8 @@ fn open_capture(
             .map_err(|e| match e {
                 CaptureError::ModifierOnly => Msg::ErrModifierOnly,
                 CaptureError::Unsupported => Msg::ErrUnsupportedKey,
+                CaptureError::Unsafe(Unsafe::Typing) => Msg::ErrTypingKey,
+                CaptureError::Unsafe(Unsafe::AppShortcut) => Msg::ErrAppShortcut,
             })
             .and_then(|h| {
                 let other = command.other().get(&fresh_config()).to_string();
@@ -247,7 +253,15 @@ fn open_capture(
                 }
             });
         match result {
-            Err(m) => dialog.set_body(tr(lang, m)),
+            // A modifier pressed on its way to a chord: keep listening.
+            Err(Msg::ErrModifierOnly) => dialog.set_body(tr(lang, Msg::ErrModifierOnly)),
+            // Any other refusal closes the dialog, so keys the daemon injects
+            // afterwards (e.g. the Ctrl+C of convert-selection after the user
+            // pressed its binding) can never be captured.
+            Err(m) => {
+                dialog.close();
+                s.toast(tr(lang, m));
+            }
             Ok(h) => {
                 let name = h.name();
                 match update_config(|c| *command.field(c) = name) {
@@ -291,6 +305,14 @@ mod tests {
             capture(65, all).unwrap().name(),
             "Ctrl+Alt+Shift+Meta+Space"
         );
+        let ctrl_alt = Mods {
+            ctrl: true,
+            alt: true,
+            ..Mods::default()
+        };
+        assert_eq!(capture(65, ctrl_alt).unwrap().name(), "Ctrl+Alt+Space");
+        // F9 is evdev 67.
+        assert_eq!(capture(75, Mods::default()).unwrap().name(), "F9");
         // Left Shift (50) and Left Ctrl (37) alone.
         assert_eq!(capture(50, SHIFT), Err(CaptureError::ModifierOnly));
         assert_eq!(
@@ -304,6 +326,32 @@ mod tests {
         );
         // A keycode below 8 cannot be a key.
         assert_eq!(capture(3, Mods::default()), Err(CaptureError::Unsupported));
+    }
+
+    #[test]
+    fn capture_refuses_unsafe_keys() {
+        let ctrl = Mods {
+            ctrl: true,
+            ..Mods::default()
+        };
+        let typing = Err(CaptureError::Unsafe(Unsafe::Typing));
+        let shortcut = Err(CaptureError::Unsafe(Unsafe::AppShortcut));
+        // Space (65), A (38), C (54) as GDK keycodes.
+        assert_eq!(capture(65, Mods::default()), typing);
+        assert_eq!(capture(38, Mods::default()), typing);
+        assert_eq!(capture(38, SHIFT), typing);
+        assert_eq!(capture(65, SHIFT), typing);
+        assert_eq!(capture(54, ctrl), shortcut);
+        assert_eq!(
+            capture(
+                38,
+                Mods {
+                    shift: true,
+                    ..ctrl
+                }
+            ),
+            shortcut
+        );
     }
 
     #[test]

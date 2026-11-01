@@ -75,17 +75,32 @@ impl Config {
         std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))
     }
 
+    /// Parses both hotkeys. An unparsable one is an error; one that parses but
+    /// is unsafe to bind (it types text or is an app shortcut, see
+    /// [`Hotkey::check_safe`]) falls back to that command's default with a
+    /// warning, so a hand-edited config cannot turn typing into conversions.
     pub fn hotkeys(&self) -> anyhow::Result<Vec<(Hotkey, HotkeyAction)>> {
-        let parse = |field: &str, s: &str| {
-            Hotkey::parse(s).map_err(|e| anyhow::anyhow!("invalid {field} hotkey {s:?}: {e}"))
+        let defaults = Config::default();
+        let parse = |field: &str, s: &str, default: &str| {
+            let h = Hotkey::parse(s)
+                .map_err(|e| anyhow::anyhow!("invalid {field} hotkey {s:?}: {e}"))?;
+            if let Err(why) = h.check_safe() {
+                log::warn!("unsafe {field} hotkey {s:?} ({why:?}), using the default {default:?}");
+                return Hotkey::parse(default).map_err(|e| anyhow::anyhow!("{e}"));
+            }
+            Ok::<_, anyhow::Error>(h)
         };
         Ok(vec![
             (
-                parse("convert_last", &self.convert_last)?,
+                parse("convert_last", &self.convert_last, &defaults.convert_last)?,
                 HotkeyAction::ConvertLast,
             ),
             (
-                parse("convert_selection", &self.convert_selection)?,
+                parse(
+                    "convert_selection",
+                    &self.convert_selection,
+                    &defaults.convert_selection,
+                )?,
                 HotkeyAction::ConvertSelection,
             ),
         ])
@@ -167,6 +182,23 @@ mod tests {
         assert_eq!(h[0].1, HotkeyAction::ConvertLast);
         assert_eq!(h[1].1, HotkeyAction::ConvertSelection);
         assert!(h[1].0.shift);
+    }
+
+    #[test]
+    fn unsafe_hotkey_falls_back_to_default() {
+        let c = Config {
+            convert_last: "a".into(),
+            convert_selection: "Ctrl+C".into(),
+            ..Config::default()
+        };
+        let h = c.hotkeys().unwrap();
+        assert_eq!(h[0].0, Hotkey::parse("Pause").unwrap());
+        assert_eq!(h[1].0, Hotkey::parse("Shift+Pause").unwrap());
+        let c = Config {
+            convert_last: "Ctrl+Alt+Space".into(),
+            ..Config::default()
+        };
+        assert_eq!(c.hotkeys().unwrap()[0].0.name(), "Ctrl+Alt+Space");
     }
 
     #[test]

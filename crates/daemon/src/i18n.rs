@@ -73,6 +73,8 @@ pub enum Msg {
     PressShortcutHint,
     ErrModifierOnly,
     ErrUnsupportedKey,
+    ErrTypingKey,
+    ErrAppShortcut,
     ErrDuplicate,
     Cancel,
     HotkeysTip,
@@ -145,6 +147,8 @@ impl Msg {
         Msg::PressShortcutHint,
         Msg::ErrModifierOnly,
         Msg::ErrUnsupportedKey,
+        Msg::ErrTypingKey,
+        Msg::ErrAppShortcut,
         Msg::ErrDuplicate,
         Msg::Cancel,
         Msg::HotkeysTip,
@@ -276,6 +280,18 @@ pub fn tr(lang: Lang, m: Msg) -> &'static str {
         }
         (Msg::ErrUnsupportedKey, Lang::Ru) => {
             "Эта клавиша не поддерживается. Используйте Pause, ScrollLock, Insert, пробел, F1–F12 или букву."
+        }
+        (Msg::ErrTypingKey, Lang::En) => {
+            "A letter or Space types text, so it cannot be a shortcut on its own. Add Alt or Super, or use Pause, ScrollLock, Insert or F1–F12."
+        }
+        (Msg::ErrTypingKey, Lang::Ru) => {
+            "Буква или пробел печатают текст, поэтому сами по себе не могут быть сочетанием. Добавьте Alt или Super либо используйте Pause, ScrollLock, Insert или F1–F12."
+        }
+        (Msg::ErrAppShortcut, Lang::En) => {
+            "Ctrl with a letter or Space is an application shortcut (copy, select all…). Add Alt or Super, or use Pause, ScrollLock, Insert or F1–F12."
+        }
+        (Msg::ErrAppShortcut, Lang::Ru) => {
+            "Ctrl с буквой или пробелом — это сочетание приложений (копировать, выделить всё…). Добавьте Alt или Super либо используйте Pause, ScrollLock, Insert или F1–F12."
         }
         (Msg::ErrDuplicate, Lang::En) => "The other command already uses this shortcut",
         (Msg::ErrDuplicate, Lang::Ru) => "Это сочетание уже занято другой командой",
