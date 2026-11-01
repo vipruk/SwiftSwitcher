@@ -163,14 +163,16 @@ fn current_lang() -> Lang {
     Lang::from_config(&c.language)
 }
 
-/// Shows the tray icon. Without a StatusNotifierWatcher this logs one
-/// info line and returns Ok: the daemon works without a tray.
+/// Shows the tray icon. At login the daemon can start before the shell's
+/// StatusNotifierWatcher is up, so the icon registers whenever the watcher
+/// appears (and re-registers after a shell restart). Any other failure logs
+/// one info line and returns Ok: the daemon works without a tray.
 pub async fn spawn(
     mut status_rx: watch::Receiver<Status>,
     cmd_tx: mpsc::Sender<Command>,
 ) -> Result<()> {
     let tray = SwiftTray::new(status_rx.borrow().clone(), current_lang(), cmd_tx);
-    let handle = match tray.spawn().await {
+    let handle = match tray.assume_sni_available(true).spawn().await {
         Ok(h) => h,
         Err(e) => {
             log::info!("no tray icon: {e}");
@@ -245,5 +247,49 @@ mod tests {
                 .description
                 .is_empty()
         );
+    }
+
+    /// Run with `dbus-run-session -- cargo test -p swiftswitcher -- --ignored
+    /// tray_waits_for_watcher`: ksni talks to the session bus from the
+    /// environment, so this must not run on the desktop's real bus.
+    #[tokio::test]
+    #[ignore = "needs a private session bus (dbus-run-session)"]
+    async fn tray_waits_for_watcher() {
+        use std::sync::{Arc, Mutex};
+
+        struct Watcher(Arc<Mutex<Vec<String>>>);
+        #[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
+        impl Watcher {
+            fn register_status_notifier_item(&self, service: String) {
+                self.0.lock().unwrap().push(service);
+            }
+            #[zbus(property)]
+            fn is_status_notifier_host_registered(&self) -> bool {
+                true
+            }
+        }
+
+        let (_status_tx, status_rx) = watch::channel(Status {
+            auto_correct: true,
+            problem: None,
+        });
+        let (cmd_tx, _cmd_rx) = mpsc::channel(4);
+        // No watcher on the bus yet: the tray must still come up.
+        spawn(status_rx, cmd_tx).await.unwrap();
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let _watcher = zbus::connection::Builder::session()
+            .name("org.kde.StatusNotifierWatcher")
+            .serve_at("/StatusNotifierWatcher", Watcher(seen.clone()))
+            .build()
+            .await
+            .unwrap();
+        for _ in 0..50 {
+            if !seen.lock().unwrap().is_empty() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("the tray never registered with the late watcher");
     }
 }

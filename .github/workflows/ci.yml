@@ -21,6 +21,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Tray waits for a late StatusNotifierWatcher (private bus)
+        run: dbus-run-session -- cargo test -p swiftswitcher -- --ignored tray_waits_for_watcher
       - name: Validate desktop entry and metainfo
         run: |
           desktop-file-validate data/io.github.vipruk.SwiftSwitcher.desktop
