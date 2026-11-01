@@ -1270,6 +1270,7 @@ dependencies = [
  "gtk4",
  "ksni",
  "libadwaita",
+ "libc",
  "log",
  "serde",
  "swift-engine",

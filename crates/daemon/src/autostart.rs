@@ -24,13 +24,14 @@ pub fn autostart_dir() -> PathBuf {
 
 /// `Exec="<exec>" run`, quoted per the Desktop Entry spec: inside the
 /// quotes `"`, `` ` ``, `$` and `\` take a backslash, and the string-value
-/// escaping then doubles every backslash once more; `%` becomes `%%`.
+/// escaping (undone first by readers) doubles every backslash once more, so
+/// `$` is written `\\$` and `\` is written `\\\\`; `%` becomes `%%`.
 fn exec_line(exec: &Path) -> String {
     let mut quoted = String::new();
     for c in exec.to_string_lossy().chars() {
         match c {
             '"' | '`' | '$' => {
-                quoted.push('\\');
+                quoted.push_str("\\\\");
                 quoted.push(c);
             }
             '\\' => quoted.push_str("\\\\\\\\"),
@@ -102,13 +103,12 @@ mod tests {
         ] {
             assert!(e.lines().any(|l| l == line), "missing {line:?} in {e}");
         }
-        // Reserved characters are escaped inside the quotes.
-        let e = entry(Path::new("/opt/a\"b$c`d\\e%f"));
-        assert!(
-            e.lines()
-                .any(|l| l == "Exec=\"/opt/a\\\"b\\$c\\`d\\\\\\\\e%%f\" run"),
-            "{e}"
-        );
+        // Inside the quotes `"`, `` ` ``, `$` and `\` take a backslash; the
+        // string-value escaping then doubles every backslash (the spec's own
+        // example writes `\\$`). `%` is a field code prefix.
+        let e = entry(Path::new(r#"/home/u/My Apps/a"b$c`d\e%f"#));
+        let want = r#"Exec="/home/u/My Apps/a\\"b\\$c\\`d\\\\e%%f" run"#;
+        assert!(e.lines().any(|l| l == want), "{e}");
     }
 
     #[test]
