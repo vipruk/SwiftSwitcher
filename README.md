@@ -25,6 +25,23 @@ SwiftSwitcher.** Remove `/etc/udev/rules.d/70-swiftswitcher.rules` to undo it.
 
 SwiftSwitcher never grabs devices; your keyboard keeps working normally.
 
+## Install
+
+### .deb (Ubuntu 24.04 or newer)
+
+    sudo apt install ./swiftswitcher_<ver>_amd64.deb
+
+Then open SwiftSwitcher from the app grid. The settings window runs the setup
+check, enables the GNOME extension and asks you to log out and back in once.
+
+Uninstall with `sudo apt remove swiftswitcher`. If you enabled autostart, also
+remove `~/.config/autostart/io.github.vipruk.SwiftSwitcher.desktop`.
+
+### AppImage
+
+The AppImage needs Ubuntu 24.04 or newer. On first run it asks for a `pkexec`
+step to install the udev rule and the extension.
+
 ## Development install
 
 1. Run `scripts/dev-setup.sh`. It uses `sudo` to install the udev rule

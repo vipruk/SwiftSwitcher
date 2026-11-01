@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.vipruk.SwiftSwitcher</id>
+  <name>SwiftSwitcher</name>
+  <summary>Automatic RU/EN keyboard layout corrector</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>SwiftSwitcher notices when a word was typed in the wrong keyboard layout and replaces it with the right one, like Punto Switcher. It supports the RU and EN layouts on GNOME.</p>
+    <p>Everything is processed locally; nothing typed is logged or sent anywhere.</p>
+  </description>
+  <launchable type="desktop-id">io.github.vipruk.SwiftSwitcher.desktop</launchable>
+  <url type="homepage">https://github.com/vipruk/SwiftSwitcher</url>
+  <url type="bugtracker">https://github.com/vipruk/SwiftSwitcher/issues</url>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>swiftswitcher</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-11-01"/>
+  </releases>
+</component>

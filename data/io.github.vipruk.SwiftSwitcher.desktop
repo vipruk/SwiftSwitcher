@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SwiftSwitcher
+Name[ru]=SwiftSwitcher
+Comment=Automatic keyboard layout switcher
+Comment[ru]=Автоматическое исправление раскладки клавиатуры
+Exec=swiftswitcher settings
+Icon=io.github.vipruk.SwiftSwitcher
+Terminal=false
+Categories=Utility;Settings;
+Keywords=layout;keyboard;punto;switcher;russian;
+StartupNotify=true

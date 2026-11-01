@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libgtk-4-dev libadwaita-1-dev
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libgtk-4-dev libadwaita-1-dev desktop-file-utils appstream
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.1
@@ -16,3 +16,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Validate desktop entry and metainfo
+        run: |
+          desktop-file-validate data/io.github.vipruk.SwiftSwitcher.desktop
+          appstreamcli validate --no-net data/io.github.vipruk.SwiftSwitcher.metainfo.xml

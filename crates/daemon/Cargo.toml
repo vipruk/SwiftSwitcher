@@ -3,6 +3,7 @@ name = "swiftswitcher"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
+description = "Automatic RU/EN keyboard layout corrector for GNOME"
 
 [[bin]]
 name = "swiftswitcher"
@@ -28,3 +29,31 @@ zbus = { version = "6.2.0", default-features = false, features = ["tokio", "prox
 [dev-dependencies]
 tempfile = "3.27.0"
 tokio = { version = "1.54.1", features = ["test-util"] }
+
+[package.metadata.deb]
+name = "swiftswitcher"
+maintainer = "valeriy baranov <vipruk55@gmail.com>"
+section = "utils"
+priority = "optional"
+depends = "$auto"
+maintainer-scripts = "../../packaging/deb"
+extended-description = """\
+Automatic keyboard layout corrector for GNOME (RU/EN), inspired by Punto Switcher.
+Includes a GNOME Shell extension and a udev rule granting the active session
+access to input devices. The code is MIT; the bundled word and trigram data is
+licensed CC-BY-SA-4.0 (see /usr/share/doc/swiftswitcher/LICENSE-DATA.md)."""
+assets = [
+    ["target/release/swiftswitcher", "usr/bin/", "755"],
+    ["../../packaging/udev/70-swiftswitcher.rules", "usr/lib/udev/rules.d/70-swiftswitcher.rules", "644"],
+    ["../../extension/swiftswitcher@vipruk.github.io/*.js", "usr/share/gnome-shell/extensions/swiftswitcher@vipruk.github.io/", "644"],
+    ["../../extension/swiftswitcher@vipruk.github.io/metadata.json", "usr/share/gnome-shell/extensions/swiftswitcher@vipruk.github.io/", "644"],
+    ["../../extension/swiftswitcher@vipruk.github.io/*.js", "usr/share/swiftswitcher/extension/swiftswitcher@vipruk.github.io/", "644"],
+    ["../../extension/swiftswitcher@vipruk.github.io/metadata.json", "usr/share/swiftswitcher/extension/swiftswitcher@vipruk.github.io/", "644"],
+    ["../../data/icons/hicolor/scalable/apps/*.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../data/icons/hicolor/symbolic/apps/*.svg", "usr/share/icons/hicolor/symbolic/apps/", "644"],
+    ["../../data/icons/hicolor/scalable/apps/*.svg", "usr/share/swiftswitcher/icons/hicolor/scalable/apps/", "644"],
+    ["../../data/icons/hicolor/symbolic/apps/*.svg", "usr/share/swiftswitcher/icons/hicolor/symbolic/apps/", "644"],
+    ["../../data/io.github.vipruk.SwiftSwitcher.desktop", "usr/share/applications/", "644"],
+    ["../../data/io.github.vipruk.SwiftSwitcher.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../engine/data/LICENSE.md", "usr/share/doc/swiftswitcher/LICENSE-DATA.md", "644"],
+]
