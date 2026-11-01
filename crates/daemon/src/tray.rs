@@ -163,14 +163,47 @@ fn current_lang() -> Lang {
     Lang::from_config(&c.language)
 }
 
+const WATCHER: &str = "org.kde.StatusNotifierWatcher";
+const WATCHER_POLL: Duration = Duration::from_millis(500);
+
+/// Returns once the StatusNotifierWatcher has an owner (or the bus cannot be
+/// asked, leaving the decision to ksni).
+async fn wait_for_watcher() {
+    let Ok(conn) = zbus::Connection::session().await else {
+        return;
+    };
+    let Ok(dbus) = zbus::fdo::DBusProxy::new(&conn).await else {
+        return;
+    };
+    let Ok(name) = zbus::names::BusName::try_from(WATCHER) else {
+        return;
+    };
+    let mut logged = false;
+    loop {
+        match dbus.name_has_owner(name.clone()).await {
+            Ok(true) | Err(_) => return,
+            Ok(false) => {
+                if !logged {
+                    log::info!("waiting for the tray host");
+                    logged = true;
+                }
+                tokio::time::sleep(WATCHER_POLL).await;
+            }
+        }
+    }
+}
+
 /// Shows the tray icon. At login the daemon can start before the shell's
-/// StatusNotifierWatcher is up, so the icon registers whenever the watcher
-/// appears (and re-registers after a shell restart). Any other failure logs
-/// one info line and returns Ok: the daemon works without a tray.
+/// StatusNotifierWatcher is up. ksni alone can miss a watcher that appears
+/// between its failed registration and its subscription to name changes, so
+/// the icon is only spawned once the watcher is there; ksni then
+/// re-registers after a shell restart. Any other failure logs one info line
+/// and returns Ok: the daemon works without a tray.
 pub async fn spawn(
     mut status_rx: watch::Receiver<Status>,
     cmd_tx: mpsc::Sender<Command>,
 ) -> Result<()> {
+    wait_for_watcher().await;
     let tray = SwiftTray::new(status_rx.borrow().clone(), current_lang(), cmd_tx);
     let handle = match tray.assume_sni_available(true).spawn().await {
         Ok(h) => h,
@@ -274,8 +307,9 @@ mod tests {
             problem: None,
         });
         let (cmd_tx, _cmd_rx) = mpsc::channel(4);
-        // No watcher on the bus yet: the tray must still come up.
-        spawn(status_rx, cmd_tx).await.unwrap();
+        // No watcher on the bus yet: the tray waits for it.
+        let tray = tokio::spawn(spawn(status_rx, cmd_tx));
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         let seen = Arc::new(Mutex::new(Vec::new()));
         let _watcher = zbus::connection::Builder::session()
@@ -286,6 +320,7 @@ mod tests {
             .unwrap();
         for _ in 0..50 {
             if !seen.lock().unwrap().is_empty() {
+                tray.await.unwrap().unwrap();
                 return;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
