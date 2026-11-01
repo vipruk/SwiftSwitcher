@@ -801,6 +801,9 @@ mod tests {
         async fn focused_app(&self) -> Result<String> {
             Ok(self.app.clone())
         }
+        async fn running_apps(&self) -> Result<Vec<String>> {
+            Ok(Vec::new())
+        }
         async fn selection_begin(&self) -> Result<bool> {
             self.call("selection_begin");
             if self.begin_fails {

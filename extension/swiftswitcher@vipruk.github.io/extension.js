@@ -11,6 +11,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 import * as KeyboardManager from 'resource:///org/gnome/shell/misc/keyboardManager.js';
 
+import {appIdOf, uniqueAppIds} from './appid.js';
 import {ClipboardSaver, isWholeLineCopy} from './clipboard.js';
 import {convertText, targetSource} from './keymap.js';
 
@@ -32,6 +33,9 @@ const IFACE_XML = `
     </method>
     <method name="GetFocusedApp">
       <arg type="s" direction="out" name="app"/>
+    </method>
+    <method name="ListRunningApps">
+      <arg type="as" direction="out" name="apps"/>
     </method>
     <method name="SelectionBegin">
       <arg type="b" direction="out" name="ok"/>
@@ -152,10 +156,14 @@ class ShellBridge {
 
     GetFocusedApp() {
         const app = Shell.WindowTracker.get_default().focus_app;
-        const appId = app && !app.is_window_backed() ? app.get_id() : null;
-        if (appId)
-            return appId.replace(/\.desktop$/, '');
-        return global.display.focus_window?.get_wm_class() ?? '';
+        return appIdOf(app?.get_id(), app?.is_window_backed() ?? false,
+            global.display.focus_window?.get_wm_class());
+    }
+
+    ListRunningApps() {
+        const apps = Shell.AppSystem.get_default().get_running();
+        return uniqueAppIds(apps.map(app => appIdOf(
+            app.get_id(), app.is_window_backed(), app.get_windows()[0]?.get_wm_class())));
     }
 
     async SelectionBeginAsync(_params, invocation) {

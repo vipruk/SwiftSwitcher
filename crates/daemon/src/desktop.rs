@@ -12,6 +12,10 @@ pub trait Desktop {
     async fn layouts(&self) -> Result<Vec<String>>;
     async fn set_layout(&self, id: &str) -> Result<bool>;
     async fn focused_app(&self) -> Result<String>;
+    /// Ids of the running apps, in the form `focused_app` reports.
+    // Used by the settings window's exceptions picker (a later task).
+    #[allow(dead_code)]
+    async fn running_apps(&self) -> Result<Vec<String>>;
     async fn selection_begin(&self) -> Result<bool>;
     /// Converts the clipboard; returns the input source id the text is now
     /// in, or "" if nothing was converted.
@@ -29,6 +33,7 @@ trait Shell {
     fn list_layouts(&self) -> zbus::Result<Vec<String>>;
     fn set_layout(&self, id: &str) -> zbus::Result<bool>;
     fn get_focused_app(&self) -> zbus::Result<String>;
+    fn list_running_apps(&self) -> zbus::Result<Vec<String>>;
     fn selection_begin(&self) -> zbus::Result<bool>;
     fn selection_convert(&self) -> zbus::Result<String>;
     fn selection_end(&self) -> zbus::Result<bool>;
@@ -78,6 +83,9 @@ impl Desktop for GnomeDesktop {
     }
     async fn focused_app(&self) -> Result<String> {
         call(self.proxy.get_focused_app()).await
+    }
+    async fn running_apps(&self) -> Result<Vec<String>> {
+        call(self.proxy.list_running_apps()).await
     }
     async fn selection_begin(&self) -> Result<bool> {
         call(self.proxy.selection_begin()).await
