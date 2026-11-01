@@ -49,6 +49,7 @@ pub(super) fn page(shell: &Shell, lang: Lang) -> adw::PreferencesPage {
         move |l, id| add_app(&s1, lang, l, &id),
         move |l, id| change(&s2, lang, l, |v| v.retain(|a| a != &id)),
     );
+    shell.keep(&list);
     list.show(&excluded());
     page.add(&list.group);
 

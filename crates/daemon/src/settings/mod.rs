@@ -185,6 +185,10 @@ fn config_lang() -> Lang {
 struct Shell {
     window: adw::PreferencesWindow,
     pages: Rc<RefCell<Vec<adw::PreferencesPage>>>,
+    /// Item lists of the current pages. Their widget callbacks hold only weak
+    /// references, so this is what keeps them alive; emptied on rebuild and
+    /// when the window closes.
+    lists: Rc<RefCell<Vec<Rc<list::ItemList>>>>,
     /// Set until the first setup check finishes after opening.
     auto_start_pending: Rc<Cell<bool>>,
 }
@@ -192,6 +196,7 @@ struct Shell {
 impl Shell {
     fn rebuild(&self, lang: Lang) {
         let visible = self.window.visible_page_name();
+        self.lists.borrow_mut().clear();
         for p in self.pages.borrow_mut().drain(..) {
             self.window.remove(&p);
         }
@@ -210,6 +215,11 @@ impl Shell {
         if let Some(v) = visible {
             self.window.set_visible_page_name(&v);
         }
+    }
+
+    /// Keeps `list` alive until the next rebuild or the window closing.
+    fn keep(&self, list: &Rc<list::ItemList>) {
+        self.lists.borrow_mut().push(list.clone());
     }
 
     fn toast(&self, text: &str) {
@@ -240,9 +250,16 @@ fn build_window(app: &adw::Application) -> adw::PreferencesWindow {
     let shell = Shell {
         window: window.clone(),
         pages: Rc::default(),
+        lists: Rc::default(),
         auto_start_pending: Rc::new(Cell::new(true)),
     };
     general::on_open();
+    // The lists' callbacks hold the shell, so release them with the window.
+    let lists = shell.lists.clone();
+    window.connect_close_request(move |_| {
+        lists.borrow_mut().clear();
+        glib::Propagation::Proceed
+    });
     shell.rebuild(config_lang());
     window
 }

@@ -66,6 +66,7 @@ fn group(shell: &Shell, lang: Lang, which: List, title: Msg, hint: Msg) -> Rc<It
         move |l, w| edit(&s1, lang, l, which, &w, ""),
         move |l, w| edit(&s2, lang, l, which, "", &w),
     );
+    shell.keep(&list);
     reload(shell, lang, &list, which);
     // The daemon appends learned words; pick them up on return to the window.
     let (weak, s) = (Rc::downgrade(&list), shell.clone());
