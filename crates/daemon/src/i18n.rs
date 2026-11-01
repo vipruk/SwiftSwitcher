@@ -334,16 +334,16 @@ pub fn tr(lang: Lang, m: Msg) -> &'static str {
         (Msg::Privacy, Lang::En) => "Privacy",
         (Msg::Privacy, Lang::Ru) => "Конфиденциальность",
         (Msg::PrivacyReads, Lang::En) => {
-            "It reads all keyboard and pointer input, the id of the focused application, and the clipboard only while converting a selection."
+            "It reads all keyboard and pointer input, the id of the focused application, and the clipboard only while converting a selection. The clipboard is then restored, and its contents are never sent over D-Bus."
         }
         (Msg::PrivacyReads, Lang::Ru) => {
-            "Программа читает весь ввод с клавиатуры и указателя, идентификатор активного приложения и буфер обмена только во время исправления выделенного текста."
+            "Программа читает весь ввод с клавиатуры и указателя, идентификатор активного приложения и буфер обмена только во время исправления выделенного текста. Затем буфер обмена восстанавливается, а его содержимое никогда не передаётся по D-Bus."
         }
         (Msg::PrivacyLocal, Lang::En) => {
-            "SwiftSwitcher reads all keystrokes locally in order to work. Nothing typed is logged, stored or sent anywhere: there is no network code. The only files it writes are its config and the dictionary words you explicitly teach it."
+            "SwiftSwitcher reads all keystrokes locally in order to work. Nothing typed is logged or sent anywhere: there is no network code. The only files it writes are: its config; the never and always word lists; undos.txt, which records the words you undid and how often, until they are learned; the autostart entry while Start on login is on; and an empty marker noting that autostart was set up."
         }
         (Msg::PrivacyLocal, Lang::Ru) => {
-            "SwiftSwitcher читает все нажатия клавиш локально, чтобы работать. Ничто из набранного не записывается в журнал, не сохраняется и никуда не отправляется: сетевого кода нет. Единственные файлы, которые программа пишет, это её настройки и слова словаря, которым вы её явно научили."
+            "SwiftSwitcher читает все нажатия клавиш локально, чтобы работать. Ничто из набранного не записывается в журнал и никуда не отправляется: сетевого кода нет. Программа пишет только эти файлы: свои настройки; списки слов «никогда» и «всегда»; undos.txt, где записаны отменённые вами слова и сколько раз их отменяли, пока они не выучены; файл автозапуска, пока включён запуск при входе; и пустой маркер о том, что автозапуск был настроен."
         }
         (Msg::PrivacyUinput, Lang::En) => {
             "Device access is granted by a udev rule using the uaccess tag: the active desktop session gets read access to your keyboards, mice and touchpads, and write access to /dev/uinput. This is honest but broad: any program running in your active session can read those devices (see everything you type), and, through /dev/uinput, create a virtual keyboard that types into any window, not only SwiftSwitcher."

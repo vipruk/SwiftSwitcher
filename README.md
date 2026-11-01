@@ -13,8 +13,21 @@ the focused app and the selection over D-Bus.
 ## Privacy
 
 SwiftSwitcher reads all keystrokes locally in order to work. Nothing typed is
-logged, stored or sent anywhere: there is no network code. The only files it
-writes are its config and the dictionary words you explicitly teach it.
+logged or sent anywhere: there is no network code. The only files it writes are:
+
+- its config (`~/.config/swiftswitcher/config.toml`);
+- the never and always word lists (`~/.local/share/swiftswitcher/never.txt` and
+  `always.txt`);
+- `undos.txt` in the same directory, which records the words you undid and how
+  often, until they are learned;
+- the autostart entry while Start on login is on
+  (`~/.config/autostart/io.github.vipruk.SwiftSwitcher.desktop`);
+- an empty marker noting that autostart was set up
+  (`~/.local/state/swiftswitcher/autostart-initialized`).
+
+It reads all keyboard and pointer input, the id of the focused application, and
+the clipboard only while converting a selection. The clipboard is then restored,
+and its contents are never sent over D-Bus.
 
 Device access is granted by a udev rule using the `uaccess` tag: the active
 desktop session gets read access to your keyboards, mice and touchpads, and write
