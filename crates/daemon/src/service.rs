@@ -46,6 +46,18 @@ impl Daemon {
     }
 }
 
+/// Client side of the interface, for the settings window.
+#[zbus::proxy(
+    interface = "io.github.vipruk.SwiftSwitcher.Daemon",
+    default_service = "io.github.vipruk.SwiftSwitcher",
+    default_path = "/io/github/vipruk/SwiftSwitcher"
+)]
+pub trait Daemon {
+    fn status(&self) -> zbus::Result<(bool, String)>;
+    #[allow(dead_code)] // exercised by the tests
+    fn quit(&self) -> zbus::Result<()>;
+}
+
 /// Exports the daemon interface at [`PATH`]. Call before [`acquire`], so no
 /// call that arrives once the name is owned finds nothing there.
 pub async fn serve(
@@ -101,16 +113,6 @@ mod tests {
             .build()
             .await
             .unwrap()
-    }
-
-    #[zbus::proxy(
-        interface = "io.github.vipruk.SwiftSwitcher.Daemon",
-        default_service = "io.github.vipruk.SwiftSwitcher",
-        default_path = "/io/github/vipruk/SwiftSwitcher"
-    )]
-    trait Daemon {
-        fn status(&self) -> zbus::Result<(bool, String)>;
-        fn quit(&self) -> zbus::Result<()>;
     }
 
     #[tokio::test]

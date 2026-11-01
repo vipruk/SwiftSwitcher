@@ -1,3 +1,4 @@
+mod autostart;
 mod check;
 mod config;
 mod corrector;
@@ -8,6 +9,8 @@ mod input;
 mod paths;
 mod reload;
 mod service;
+mod settings;
+mod setup;
 mod status;
 mod tray;
 
@@ -30,6 +33,12 @@ enum Mode {
     Run,
     /// Check that the environment is set up correctly.
     Check,
+    /// Open the settings window.
+    Settings {
+        /// The page to show.
+        #[arg(long, value_enum, default_value_t)]
+        page: settings::Page,
+    },
 }
 
 /// Runtime requests to the daemon's main loop.
@@ -42,16 +51,20 @@ pub enum Command {
     Quit,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     match Cli::parse().command.unwrap_or(Mode::Run) {
-        Mode::Run => run().await,
+        Mode::Run => tokio::runtime::Runtime::new()?.block_on(run()),
         Mode::Check => {
-            if !check::run().await {
+            if !tokio::runtime::Runtime::new()?.block_on(check::run()) {
                 std::process::exit(1);
             }
             Ok(())
+        }
+        // GTK owns this thread; the window keeps its own tokio runtime.
+        Mode::Settings { page } => {
+            let code = settings::main(page);
+            std::process::exit(i32::from(code.get()))
         }
     }
 }

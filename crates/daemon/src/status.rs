@@ -22,7 +22,6 @@ pub enum Problem {
 }
 
 impl Problem {
-    #[allow(dead_code)] // read by the tray client (Task 3)
     pub const ALL: &'static [Problem] = &[Problem::Extension, Problem::Layouts, Problem::Pointer];
 
     /// Stable wire code, sent by the D-Bus `Status()` method.
@@ -34,7 +33,6 @@ impl Problem {
         }
     }
 
-    #[allow(dead_code)] // read by the tray client (Task 3)
     /// Inverse of [`Problem::code`]; "" and unknown codes give None.
     pub fn from_code(code: &str) -> Option<Problem> {
         Problem::ALL.iter().copied().find(|p| p.code() == code)

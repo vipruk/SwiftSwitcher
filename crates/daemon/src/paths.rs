@@ -14,9 +14,6 @@
 //! `data/icons`, `extension/swiftswitcher@vipruk.github.io` and
 //! `packaging/udev/70-swiftswitcher.rules`.
 
-// Consumers arrive in later tasks.
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 
 const EXT_ID: &str = "swiftswitcher@vipruk.github.io";
@@ -49,6 +46,7 @@ fn dev_root() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
 }
 
+#[allow(dead_code)] // for packaging tasks
 pub fn resource_root() -> PathBuf {
     match root() {
         Root::AppImage(p) => p,
