@@ -53,6 +53,7 @@ assets = [
     ["../../data/icons/hicolor/symbolic/apps/*.svg", "usr/share/icons/hicolor/symbolic/apps/", "644"],
     ["../../data/icons/hicolor/scalable/apps/*.svg", "usr/share/swiftswitcher/icons/hicolor/scalable/apps/", "644"],
     ["../../data/icons/hicolor/symbolic/apps/*.svg", "usr/share/swiftswitcher/icons/hicolor/symbolic/apps/", "644"],
+    ["../../data/icons/*.svg", "usr/share/swiftswitcher/icons/", "644"],
     ["../../data/io.github.vipruk.SwiftSwitcher.desktop", "usr/share/applications/", "644"],
     ["../../data/io.github.vipruk.SwiftSwitcher.metainfo.xml", "usr/share/metainfo/", "644"],
     ["../engine/data/LICENSE.md", "usr/share/doc/swiftswitcher/LICENSE-DATA.md", "644"],
