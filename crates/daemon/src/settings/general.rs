@@ -12,7 +12,7 @@ use crate::i18n::{Lang, Msg, problem_text, tr};
 use crate::setup;
 use adw::prelude::*;
 use gtk::glib;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -20,6 +20,8 @@ const LANGS: [Lang; 2] = [Lang::En, Lang::Ru];
 const DAEMON_POLL: Duration = Duration::from_secs(3);
 /// Gives a freshly started daemon time to own its bus name.
 const START_SETTLE: Duration = Duration::from_secs(1);
+/// A status call that takes longer leaves the row as it was.
+const STATUS_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Once per window: the first open ever turns Start on login on (R8), and
 /// an enabled entry that starts an old path (say, an AppImage that moved)
@@ -27,13 +29,13 @@ const START_SETTLE: Duration = Duration::from_secs(1);
 pub(super) fn on_open() {
     let dir = autostart::autostart_dir();
     let exec = autostart::exec_path();
-    if autostart::is_enabled(&dir) && autostart::is_stale(&dir, &exec) {
-        match autostart::set_enabled(&dir, &exec, true) {
     match autostart::init_default(&dir, &autostart::marker_path(), &exec) {
         Ok(true) => log::info!("start on login turned on by default"),
         Ok(false) => {}
         Err(e) => log::warn!("cannot set up start on login: {e}"),
     }
+    if autostart::is_enabled(&dir) && autostart::is_stale(&dir, &exec) {
+        match autostart::set_enabled(&dir, &exec, true) {
             Ok(()) => log::info!("autostart entry updated for {}", exec.display()),
             Err(e) => log::warn!("cannot update the autostart entry: {e}"),
         }
@@ -136,46 +138,63 @@ fn daemon_group(shell: &Shell, lang: Lang) -> adw::PreferencesGroup {
     row.add_suffix(&start);
     group.add(&row);
 
+    let target = DaemonRow {
+        row: row.downgrade(),
+        start: start.downgrade(),
+        pending: Rc::default(),
+    };
     let s = shell.clone();
-    let (r, b) = (row.downgrade(), start.downgrade());
+    let t = target.clone();
     start.connect_clicked(move |_| {
         if let Err(e) = start_daemon() {
             log::warn!("cannot start the daemon: {e}");
             s.toast(tr(lang, Msg::StartFailed));
             return;
         }
-        let (r, b) = (r.clone(), b.clone());
-        glib::timeout_add_local_once(START_SETTLE, move || refresh_daemon(&r, &b, lang));
+        let t = t.clone();
+        glib::timeout_add_local_once(START_SETTLE, move || t.refresh(lang));
     });
 
-    refresh_daemon(&row.downgrade(), &start.downgrade(), lang);
-    let (r, b) = (row.downgrade(), start.downgrade());
+    target.refresh(lang);
     // Stops once a rebuild or close drops the row.
     glib::timeout_add_local(DAEMON_POLL, move || {
-        if r.upgrade().is_none() {
+        if target.row.upgrade().is_none() {
             return glib::ControlFlow::Break;
         }
-        refresh_daemon(&r, &b, lang);
+        target.refresh(lang);
         glib::ControlFlow::Continue
     });
     group
 }
 
-fn refresh_daemon(
-    row: &glib::WeakRef<adw::ActionRow>,
-    start: &glib::WeakRef<gtk::Button>,
-    lang: Lang,
-) {
-    let (row, start) = (row.clone(), start.clone());
-    glib::spawn_future_local(async move {
-        let Some(state) = off_thread(daemon_state()).await else {
+/// The daemon row, its Start button, and whether a status call is in flight.
+#[derive(Clone)]
+struct DaemonRow {
+    row: glib::WeakRef<adw::ActionRow>,
+    start: glib::WeakRef<gtk::Button>,
+    pending: Rc<Cell<bool>>,
+}
+
+impl DaemonRow {
+    /// Asks the daemon for its status, at most one call at a time and for at
+    /// most [`STATUS_TIMEOUT`]; a call that times out leaves the row as it is.
+    fn refresh(&self, lang: Lang) {
+        if self.pending.replace(true) {
             return;
-        };
-        let (Some(row), Some(start)) = (row.upgrade(), start.upgrade()) else {
-            return;
-        };
-        show_daemon(&row, &start, lang, state);
-    });
+        }
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let state = off_thread(tokio::time::timeout(STATUS_TIMEOUT, daemon_state())).await;
+            this.pending.set(false);
+            let Some(Ok(state)) = state else {
+                return;
+            };
+            let (Some(row), Some(start)) = (this.row.upgrade(), this.start.upgrade()) else {
+                return;
+            };
+            show_daemon(&row, &start, lang, state);
+        });
+    }
 }
 
 fn show_daemon(row: &adw::ActionRow, start: &gtk::Button, lang: Lang, state: DaemonState) {
