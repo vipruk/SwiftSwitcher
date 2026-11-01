@@ -18,7 +18,8 @@ use std::time::Duration;
 use swift_engine::detect::{Params, Verdict, decide};
 use swift_engine::dict::UserDict;
 use swift_engine::hotkey::{Hotkey, HotkeyAction};
-use swift_engine::keymap::{KeyCode, Layout, Stroke, char_for};
+use swift_engine::keymap::{KeyCode, Layout, Stroke, char_for, is_letter};
+use swift_engine::model::LangModel;
 use swift_engine::tracker::{Input, Tracker, TrackerEvent};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, timeout};
@@ -599,13 +600,46 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             let word = self.tracker.current_word().to_vec();
             if self.correct(&word, None, word.len(), from, to).await? == Outcome::Done {
                 self.user_decided = true;
+                self.learn_manual_convert(&word, from);
             }
         } else if let Some((word, t)) = self.tracker.last_word() {
             let word = word.to_vec();
-            self.correct(&word, Some(t), word.len() + 1, from, to)
-                .await?;
+            if self
+                .correct(&word, Some(t), word.len() + 1, from, to)
+                .await?
+                == Outcome::Done
+            {
+                self.learn_manual_convert(&word, from);
+            }
         }
         Ok(())
+    }
+
+    /// Counts a manual conversion of `strokes` typed in `from`; after
+    /// `learn_after_converts` of them the word goes to the always list. A
+    /// typed reading that is itself a known word is never learned: always
+    /// converting it would break real text.
+    fn learn_manual_convert(&mut self, strokes: &[Stroke], from: Layout) {
+        let Some(typed) = strokes
+            .iter()
+            .map(|&s| char_for(s, from))
+            .collect::<Option<String>>()
+        else {
+            return;
+        };
+        let lower = typed.to_lowercase();
+        let core = lower.trim_matches(|c| !is_letter(c, from));
+        if core.is_empty() || LangModel::embedded(from).contains(core) {
+            return;
+        }
+        match self
+            .dict
+            .record_convert(&self.data_dir, core, self.config.learn_after_converts)
+        {
+            Ok(true) => log::info!("manual convert: word added to the always list"),
+            Ok(false) => {}
+            Err(e) => log::warn!("cannot update the always list: {e}"),
+        }
     }
 
     /// Restores the original text of the last correction; after
@@ -1415,6 +1449,59 @@ mod tests {
         let before = r.ops().len();
         r.type_text("ghbdtn ").await;
         assert_eq!(r.ops().len(), before);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn second_manual_convert_learns_the_word_for_always() {
+        let mut r = rig(Setup::default());
+        let always = r.dir.path().join("always.txt");
+        let mut want = Vec::new();
+        for round in 1..=2 {
+            // Pause switched to ru; the user is back in us next time.
+            *r.c.desktop.layout.borrow_mut() = "us".into();
+            // A word the detector keeps: only Pause converts it.
+            r.type_text("xkcd ").await;
+            assert_eq!(r.ops(), want, "kept as typed, round {round}");
+            r.tap(KEY_PAUSE).await;
+            want.extend(correction_ops("xkcd"));
+            assert_eq!(always.exists(), round == 2, "round {round}");
+        }
+        let words = std::fs::read_to_string(&always).unwrap();
+        assert_eq!(words.lines().collect::<Vec<_>>(), vec!["xkcd"]);
+        // Learned: the next time it is converted automatically.
+        *r.c.desktop.layout.borrow_mut() = "us".into();
+        r.type_text("xkcd ").await;
+        want.extend(correction_ops("xkcd"));
+        assert_eq!(r.ops(), want);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn manual_convert_of_a_real_word_is_not_learned() {
+        let mut r = rig(Setup::default());
+        for _ in 0..3 {
+            *r.c.desktop.layout.borrow_mut() = "us".into();
+            r.type_text("hello ").await;
+            r.tap(KEY_PAUSE).await;
+        }
+        assert!(!r.dir.path().join("always.txt").exists());
+        assert!(!r.dir.path().join("converts.txt").exists());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn manual_convert_learning_can_be_turned_off() {
+        let mut r = rig(Setup {
+            config: Config {
+                learn_after_converts: 0,
+                ..Config::default()
+            },
+            ..Setup::default()
+        });
+        for _ in 0..3 {
+            *r.c.desktop.layout.borrow_mut() = "us".into();
+            r.type_text("xkcd ").await;
+            r.tap(KEY_PAUSE).await;
+        }
+        assert!(!r.dir.path().join("always.txt").exists());
     }
 
     #[tokio::test(start_paused = true)]

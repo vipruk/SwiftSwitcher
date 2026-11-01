@@ -18,8 +18,8 @@ logged or sent anywhere: there is no network code. The only files it writes are:
 - its config (`~/.config/swiftswitcher/config.toml`);
 - the never and always word lists (`~/.local/share/swiftswitcher/never.txt` and
   `always.txt`);
-- `undos.txt` in the same directory, which records the words you undid and how
-  often, until they are learned;
+- `undos.txt` and `converts.txt` in the same directory, which record the words
+  you undid or converted by hand and how often, until they are learned;
 - the autostart entry while Start on login is on
   (`~/.config/autostart/io.github.vipruk.SwiftSwitcher.desktop`);
 - an empty marker noting that autostart was set up
@@ -92,7 +92,9 @@ Defaults, configurable:
 - `Pause`: convert the word you are typing, or the last word. Pressed right
   after an automatic correction (before typing or clicking anything else), it
   undoes that correction instead. After the same word is undone three times
-  (`learn_after_undos`), it is remembered and no longer corrected.
+  (`learn_after_undos`), it is remembered and no longer corrected. A word you
+  convert by hand twice (`learn_after_converts`) is remembered too and from
+  then on converted automatically, unless what you typed is itself a real word.
 - `Shift+Pause`: convert the selected text between layouts and switch to the
   layout the text is now in.
 - `Alt+Pause`: change the case of the selected text: every letter is inverted
@@ -119,9 +121,11 @@ and `swiftswitcher check` say so.
 | `idle_reset_secs` | `5` | Pause after which the typed word is forgotten |
 | `settle_ms` | `40` | Wait after switching the layout before typing |
 | `learn_after_undos` | `3` | Undos of the same word before it is never corrected again |
+| `learn_after_converts` | `2` | Manual conversions of the same word before it is always corrected; `0` turns this off |
 
 Dictionary words you teach it live in `~/.local/share/swiftswitcher/never.txt`
-and `always.txt`; `undos.txt` counts undos of words not learned yet.
+and `always.txt`; `undos.txt` and `converts.txt` count undos and manual
+conversions of words not learned yet.
 
 ## License
 

@@ -12,6 +12,9 @@ pub struct UserDict {
     pub always: HashSet<String>,
     /// Undo counts of words not yet in the never list, kept in `undos.txt`.
     pub undos: HashMap<String, u32>,
+    /// Manual-conversion counts of words not yet in the always list, kept in
+    /// `converts.txt`.
+    pub converts: HashMap<String, u32>,
 }
 
 fn read_set(path: &Path) -> io::Result<HashSet<String>> {
@@ -42,6 +45,17 @@ fn read_counts(path: &Path) -> io::Result<HashMap<String, u32>> {
     }
 }
 
+/// Writes `word count` lines, sorted, atomically.
+fn write_counts(dir: &Path, name: &str, counts: &HashMap<String, u32>) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    let mut words: Vec<_> = counts.iter().collect();
+    words.sort();
+    let text: String = words.iter().map(|(w, n)| format!("{w} {n}\n")).collect();
+    let tmp = dir.join(format!("{name}.tmp"));
+    fs::write(&tmp, text)?;
+    fs::rename(tmp, dir.join(name))
+}
+
 /// Which user list an edit applies to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum List {
@@ -56,11 +70,13 @@ impl UserDict {
             never: read_set(&dir.join("never.txt"))?,
             always: read_set(&dir.join("always.txt"))?,
             undos: read_counts(&dir.join("undos.txt"))?,
+            converts: read_counts(&dir.join("converts.txt"))?,
         })
     }
 
     /// Records one undo of `word`. Once it has been undone `threshold` times
-    /// it moves to the never list. Returns true when the word was learned.
+    /// it moves to the never list (and leaves the always list). Returns true
+    /// when the word was learned.
     pub fn record_undo(&mut self, dir: &Path, word: &str, threshold: u32) -> io::Result<bool> {
         let word = word.trim().to_lowercase();
         if word.is_empty() || word.contains(char::is_whitespace) || self.never.contains(&word) {
@@ -72,21 +88,56 @@ impl UserDict {
         if learned {
             self.undos.remove(&word);
         }
-        self.write_undos(dir)?;
+        write_counts(dir, "undos.txt", &self.undos)?;
         if learned {
+            self.forget_always(dir, &word)?;
             self.add_never(dir, &word)?;
         }
         Ok(learned)
     }
 
-    fn write_undos(&self, dir: &Path) -> io::Result<()> {
-        fs::create_dir_all(dir)?;
-        let mut words: Vec<_> = self.undos.iter().collect();
-        words.sort();
-        let text: String = words.iter().map(|(w, n)| format!("{w} {n}\n")).collect();
-        let tmp = dir.join("undos.txt.tmp");
-        fs::write(&tmp, text)?;
-        fs::rename(tmp, dir.join("undos.txt"))
+    /// Records one manual conversion of `word` (the typed reading). Once it
+    /// has been converted by hand `threshold` times it moves to the always
+    /// list (and leaves the never list). A threshold of 0 turns this off.
+    /// Returns true when the word was learned.
+    pub fn record_convert(&mut self, dir: &Path, word: &str, threshold: u32) -> io::Result<bool> {
+        let word = word.trim().to_lowercase();
+        if threshold == 0
+            || word.is_empty()
+            || word.contains(char::is_whitespace)
+            || self.always.contains(&word)
+        {
+            return Ok(false);
+        }
+        let n = self.converts.entry(word.clone()).or_insert(0);
+        *n += 1;
+        let learned = *n >= threshold;
+        if learned {
+            self.converts.remove(&word);
+        }
+        write_counts(dir, "converts.txt", &self.converts)?;
+        if learned {
+            if self.never.remove(&word) {
+                Self::save_edit(dir, List::Never, &[], std::slice::from_ref(&word))?;
+            }
+            if self.undos.remove(&word).is_some() {
+                write_counts(dir, "undos.txt", &self.undos)?;
+            }
+            Self::save_edit(dir, List::Always, std::slice::from_ref(&word), &[])?;
+            self.always.insert(word);
+        }
+        Ok(learned)
+    }
+
+    /// Drops `word` from the always list and its manual-conversion count.
+    fn forget_always(&mut self, dir: &Path, word: &str) -> io::Result<()> {
+        if self.always.remove(word) {
+            Self::save_edit(dir, List::Always, &[], &[word.to_string()])?;
+        }
+        if self.converts.remove(word).is_some() {
+            write_counts(dir, "converts.txt", &self.converts)?;
+        }
+        Ok(())
     }
 
     /// Edits one list file. The file on disk is the source of truth: it is
@@ -183,6 +234,54 @@ mod tests {
         assert!(d.record_undo(tmp.path(), "rjl", 0).unwrap());
         assert!(d.record_undo(tmp.path(), "ckjdj", 1).unwrap());
         assert_eq!(UserDict::load(tmp.path()).unwrap().never.len(), 2);
+    }
+
+    #[test]
+    fn record_convert_learns_always_at_threshold_and_persists_counts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("sub");
+        let mut d = UserDict::default();
+        assert!(!d.record_convert(&dir, "Секд", 2).unwrap());
+        assert!(!d.always.contains("секд"));
+        // Counts survive a restart.
+        let mut d = UserDict::load(&dir).unwrap();
+        assert_eq!(d.converts.get("секд"), Some(&1));
+        assert!(d.record_convert(&dir, "секд", 2).unwrap());
+        let loaded = UserDict::load(&dir).unwrap();
+        assert!(loaded.always.contains("секд"));
+        assert!(loaded.converts.is_empty());
+        // Already learned: nothing more is counted.
+        assert!(!d.record_convert(&dir, "секд", 2).unwrap());
+        assert!(UserDict::load(&dir).unwrap().converts.is_empty());
+    }
+
+    #[test]
+    fn record_convert_threshold_zero_is_off() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut d = UserDict::default();
+        assert!(!d.record_convert(tmp.path(), "секд", 0).unwrap());
+        assert!(!d.record_convert(tmp.path(), "секд", 0).unwrap());
+        let loaded = UserDict::load(tmp.path()).unwrap();
+        assert!(loaded.always.is_empty() && loaded.converts.is_empty());
+    }
+
+    #[test]
+    fn learning_one_list_drops_the_word_from_the_other() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let mut d = UserDict::default();
+        assert!(d.record_undo(dir, "ghbdtn", 1).unwrap());
+        assert!(d.record_convert(dir, "ghbdtn", 1).unwrap());
+        let loaded = UserDict::load(dir).unwrap();
+        assert!(loaded.always.contains("ghbdtn"));
+        assert!(!loaded.never.contains("ghbdtn"));
+        assert!(!d.never.contains("ghbdtn"));
+
+        assert!(d.record_undo(dir, "ghbdtn", 1).unwrap());
+        let loaded = UserDict::load(dir).unwrap();
+        assert!(loaded.never.contains("ghbdtn"));
+        assert!(!loaded.always.contains("ghbdtn"));
+        assert!(!d.always.contains("ghbdtn"));
     }
 
     fn lines(p: &Path) -> String {

@@ -16,6 +16,9 @@ pub struct Config {
     pub idle_reset_secs: u64,
     pub settle_ms: u64,
     pub learn_after_undos: u32,
+    /// Manual conversions (Pause) of one word before it is always converted;
+    /// 0 turns this off.
+    pub learn_after_converts: u32,
     pub language: String,
 }
 
@@ -43,6 +46,7 @@ impl Default for Config {
             idle_reset_secs: 5,
             settle_ms: 40,
             learn_after_undos: 3,
+            learn_after_converts: 2,
             language: "en".into(),
         }
     }
@@ -177,6 +181,7 @@ mod tests {
         assert_eq!(c.idle_reset_secs, 5);
         assert_eq!(c.settle_ms, 40);
         assert_eq!(c.learn_after_undos, 3);
+        assert_eq!(c.learn_after_converts, 2);
         assert_eq!(c.excluded_apps.len(), 3);
         assert_eq!(c.terminal_apps.len(), 10);
     }
