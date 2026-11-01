@@ -175,6 +175,13 @@ struct DaemonRow {
     pending: Rc<Cell<bool>>,
 }
 
+/// The daemon's state, or `Err` after [`STATUS_TIMEOUT`]. The timer is
+/// created when the future is first polled, on the tokio runtime: building
+/// `tokio::time::timeout` on the GTK thread panics (no reactor there).
+async fn timed_daemon_state() -> Result<DaemonState, tokio::time::error::Elapsed> {
+    tokio::time::timeout(STATUS_TIMEOUT, daemon_state()).await
+}
+
 impl DaemonRow {
     /// Asks the daemon for its status, at most one call at a time and for at
     /// most [`STATUS_TIMEOUT`]; a call that times out leaves the row as it is.
@@ -184,7 +191,7 @@ impl DaemonRow {
         }
         let this = self.clone();
         glib::spawn_future_local(async move {
-            let state = off_thread(tokio::time::timeout(STATUS_TIMEOUT, daemon_state())).await;
+            let state = off_thread(timed_daemon_state()).await;
             this.pending.set(false);
             let Some(Ok(state)) = state else {
                 return;
@@ -322,6 +329,15 @@ fn apply_fix(checks: Rc<Checks>, fix: setup::Fix) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_timeout_is_built_off_the_gtk_thread() {
+        // This test thread has no tokio runtime, like the GTK main thread.
+        let fut = off_thread(timed_daemon_state());
+        // Completing at all (no panic) is the point; without a daemon on the
+        // bus the state is whatever daemon_state reports.
+        let _ = super::super::runtime().block_on(fut);
+    }
 
     #[test]
     fn every_check_has_ui_text() {
