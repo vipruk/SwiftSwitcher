@@ -51,6 +51,11 @@ pub(super) fn conflicts(new: &Hotkey, other: &str) -> bool {
     Hotkey::parse(other).is_ok_and(|o| o == *new)
 }
 
+/// Whether resetting to `default` would duplicate the other command's binding.
+fn reset_conflicts(default: &str, other: &str) -> bool {
+    Hotkey::parse(default).is_ok_and(|h| conflicts(&h, other))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Command {
     Last,
@@ -161,6 +166,10 @@ pub(super) fn page(shell: &Shell, lang: Lang) -> adw::PreferencesPage {
         reset.connect_clicked(move |_| {
             let mut default = Config::default();
             let value = command.field(&mut default).clone();
+            if reset_conflicts(&value, command.other().get(&fresh_config())) {
+                s.toast(tr(lang, Msg::ErrDuplicate));
+                return;
+            }
             if let Err(e) = update_config(|c| *command.field(c) = value) {
                 log::warn!("cannot save the hotkey: {e:#}");
                 s.toast(tr(lang, Msg::SaveFailed));
@@ -304,5 +313,14 @@ mod tests {
         assert!(conflicts(&h, "shift + pause"));
         assert!(!conflicts(&h, "Pause"));
         assert!(!conflicts(&h, "garbage"));
+    }
+
+    #[test]
+    fn reset_refuses_conflict() {
+        // Selection is "Pause", Last's default is "Pause": refused.
+        assert!(reset_conflicts("Pause", "Pause"));
+        // Normal reset: Last is F12 now, Selection is the default Shift+Pause.
+        assert!(!reset_conflicts("Pause", "Shift+Pause"));
+        assert!(!reset_conflicts("Shift+Pause", "F12"));
     }
 }
