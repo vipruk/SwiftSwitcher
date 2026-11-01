@@ -6,7 +6,7 @@
 //! is switched and confirmed first, and only then are keys sent.
 //! Log lines carry only lengths, verdict reasons, layout ids and app ids.
 
-use crate::config::Config;
+use crate::config::{Config, is_jetbrains};
 use crate::desktop::Desktop;
 use crate::inject::Injector;
 use crate::input::Physical;
@@ -32,12 +32,14 @@ const MODS_TIMEOUT: Duration = Duration::from_secs(1);
 const KEYS_POLL: Duration = Duration::from_millis(5);
 const KEYS_TIMEOUT: Duration = Duration::from_millis(300);
 const COPY_WAIT: Duration = Duration::from_millis(100);
+const JETBRAINS_COPY_WAIT: Duration = Duration::from_millis(250);
 const PASTE_WAIT: Duration = Duration::from_millis(200);
 
 const KEY_LEFTCTRL: KeyCode = 29;
 const KEY_LEFTSHIFT: KeyCode = 42;
 const KEY_C: KeyCode = 46;
 const KEY_V: KeyCode = 47;
+const KEY_INSERT: KeyCode = 110;
 
 /// Ok iff the input sources are exactly `us` and `ru`, one each.
 pub fn layout_status(layouts: &[String]) -> Result<(), String> {
@@ -664,11 +666,7 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
         let Some(app) = self.focused_app().await else {
             return Ok(());
         };
-        let mods: &[KeyCode] = if self.config.is_terminal(&app) {
-            &[KEY_LEFTCTRL, KEY_LEFTSHIFT]
-        } else {
-            &[KEY_LEFTCTRL]
-        };
+        let keys = ClipKeys::for_app(&self.config, &app);
         let begun = match self.desktop.selection_begin().await {
             Ok(true) => true,
             Ok(false) => {
@@ -681,7 +679,7 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             }
         };
         let pasted = if begun {
-            self.copy_transform_paste(mods, op).await
+            self.copy_transform_paste(keys, op).await
         } else {
             Ok(Pasted::No)
         };
@@ -715,12 +713,12 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
     }
 
     /// Copy, transform the clipboard, paste.
-    async fn copy_transform_paste(&mut self, mods: &[KeyCode], op: SelectionOp) -> Result<Pasted> {
+    async fn copy_transform_paste(&mut self, keys: ClipKeys, op: SelectionOp) -> Result<Pasted> {
         if !self.wait_keys_released().await || !self.quiet() {
             return Ok(Pasted::No);
         }
-        self.injector.chord(mods, KEY_C)?;
-        sleep(COPY_WAIT).await;
+        self.injector.chord(keys.mods, keys.copy)?;
+        sleep(keys.copy_wait).await;
         let pasted = match op {
             SelectionOp::Convert => match self.desktop.selection_convert().await {
                 Ok(id) if id.is_empty() => {
@@ -755,9 +753,43 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             log::debug!("input arrived during the selection command; not pasting");
             return Ok(Pasted::No);
         }
-        self.injector.chord(mods, KEY_V)?;
+        self.injector.chord(keys.mods, KEY_V)?;
         sleep(PASTE_WAIT).await;
         Ok(pasted)
+    }
+}
+
+/// The copy and paste chords for the focused app.
+#[derive(Clone, Copy)]
+struct ClipKeys {
+    mods: &'static [KeyCode],
+    copy: KeyCode,
+    copy_wait: Duration,
+}
+
+impl ClipKeys {
+    fn for_app(config: &Config, app: &str) -> ClipKeys {
+        if config.is_terminal(app) {
+            ClipKeys {
+                mods: &[KEY_LEFTCTRL, KEY_LEFTSHIFT],
+                copy: KEY_C,
+                copy_wait: COPY_WAIT,
+            }
+        } else if is_jetbrains(app) {
+            // Ctrl+Insert copies in the IDE editor and its terminal alike;
+            // Ctrl+V pastes in both. The JVM can be slower to publish the copy.
+            ClipKeys {
+                mods: &[KEY_LEFTCTRL],
+                copy: KEY_INSERT,
+                copy_wait: JETBRAINS_COPY_WAIT,
+            }
+        } else {
+            ClipKeys {
+                mods: &[KEY_LEFTCTRL],
+                copy: KEY_C,
+                copy_wait: COPY_WAIT,
+            }
+        }
     }
 }
 
@@ -1562,6 +1594,21 @@ mod tests {
         assert_eq!(
             r.ops(),
             vec![Op::Chord(vec![29, 42], 46), Op::Chord(vec![29, 42], 47)]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn change_case_in_jetbrains_copies_with_ctrl_insert() {
+        // One app id covers the IDE editor and its terminal; Ctrl+Insert
+        // copies in both and never interrupts a running command.
+        let mut r = rig(Setup {
+            app: "phpstorm_phpstorm",
+            ..Setup::default()
+        });
+        alt_pause(&mut r).await;
+        assert_eq!(
+            r.ops(),
+            vec![Op::Chord(vec![29], 110), Op::Chord(vec![29], 47)]
         );
     }
 

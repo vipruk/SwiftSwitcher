@@ -121,6 +121,28 @@ impl Config {
     }
 }
 
+/// JetBrains IDEs (PhpStorm, IntelliJ IDEA, PyCharm, ...). Their editor and
+/// built-in terminal share one app id, so selection commands use keys that
+/// copy in both: Ctrl+C would interrupt a command in the terminal.
+pub fn is_jetbrains(app_id: &str) -> bool {
+    const IDS: [&str; 12] = [
+        "jetbrains",
+        "phpstorm",
+        "intellij",
+        "pycharm",
+        "webstorm",
+        "goland",
+        "clion",
+        "rider_",
+        "rubymine",
+        "datagrip",
+        "rustrover",
+        "android-studio",
+    ];
+    let id = app_id.to_lowercase();
+    IDS.iter().any(|j| id.contains(j))
+}
+
 pub fn config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -239,6 +261,36 @@ mod tests {
         assert!(c.is_terminal("alacritty"));
         assert!(!c.is_terminal("firefox"));
         assert!(!c.is_terminal(""));
+    }
+
+    #[test]
+    fn jetbrains_ides_are_recognized() {
+        for id in [
+            "phpstorm_phpstorm",
+            "jetbrains-phpstorm",
+            "jetbrains-idea",
+            "intellij-idea-ultimate_intellij-idea-ultimate",
+            "pycharm-community_pycharm-community",
+            "jetbrains-webstorm",
+            "jetbrains-goland",
+            "jetbrains-clion",
+            "jetbrains-rider",
+            "rider_rider",
+            "jetbrains-rustrover",
+            "android-studio",
+        ] {
+            assert!(is_jetbrains(id), "{id}");
+        }
+        for id in [
+            "firefox",
+            "org.gnome.TextEditor",
+            "ideapad-tool",
+            "aquarium",
+            "provider",
+            "",
+        ] {
+            assert!(!is_jetbrains(id), "{id}");
+        }
     }
 
     #[test]
