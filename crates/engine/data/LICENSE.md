@@ -15,3 +15,7 @@ frequencies dropped from `.words` (frequency order kept), and character
 trigram log-probabilities computed from the words. These derived files are
 distributed under the same CC-BY-SA-4.0 license. The rest of the repository
 is MIT-licensed.
+
+`en.tech.words` is not derived from FrequencyWords: it is a short list of
+tech and IT words curated for SwiftSwitcher and is MIT-licensed like the rest
+of the repository.

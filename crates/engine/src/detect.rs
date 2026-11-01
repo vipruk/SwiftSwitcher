@@ -224,6 +224,29 @@ mod tests {
     }
 
     #[test]
+    fn converts_tech_words_typed_in_ru() {
+        // From the bundled tech word list (en.tech.words).
+        for w in [
+            "пшедфи",
+            "тпштч",
+            "лгиуктуеуы",
+            "дфкфмуд",
+            "зщыепкуы",
+            "ензуыскшзе",
+        ] {
+            assert_eq!(run(w, Layout::Ru), Verdict::Convert, "{w}");
+        }
+        // Typed in en they are words, not wrong-layout text.
+        for w in ["gitlab", "kubectl", "nginx"] {
+            assert_eq!(
+                run(w, Layout::En),
+                Verdict::Keep(Reason::TypedIsWord),
+                "{w}"
+            );
+        }
+    }
+
+    #[test]
     fn keeps_real_words() {
         assert_eq!(run("hello", Layout::En), Verdict::Keep(Reason::TypedIsWord));
         assert_eq!(
@@ -316,13 +339,12 @@ mod tests {
     #[test]
     fn short_non_words_are_not_scored() {
         // dnf -> вта was converted on trigram scores alone.
-        for w in ["dnf", "jwt"] {
-            assert_eq!(
-                run(w, Layout::En),
-                Verdict::Keep(Reason::OtherNotPlausible),
-                "{w}"
-            );
-        }
+        assert_eq!(
+            run("dnf", Layout::En),
+            Verdict::Keep(Reason::OtherNotPlausible)
+        );
+        // jwt -> оре too; it is now also a known word (en.tech.words).
+        assert_eq!(run("jwt", Layout::En), Verdict::Keep(Reason::TypedIsWord));
     }
 
     #[test]

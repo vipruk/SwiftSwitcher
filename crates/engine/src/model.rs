@@ -32,7 +32,11 @@ impl LangModel {
             }
         }
         LangModel {
-            words: words.lines().collect(),
+            words: words
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .collect(),
             trigrams,
             floor,
         }
@@ -44,7 +48,11 @@ impl LangModel {
         match layout {
             Layout::En => EN.get_or_init(|| {
                 LangModel::parse(
-                    include_str!("../data/en.words"),
+                    concat!(
+                        include_str!("../data/en.words"),
+                        "\n",
+                        include_str!("../data/en.tech.words")
+                    ),
                     include_str!("../data/en.tri"),
                 )
             }),
