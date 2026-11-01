@@ -13,8 +13,6 @@ pub trait Desktop {
     async fn set_layout(&self, id: &str) -> Result<bool>;
     async fn focused_app(&self) -> Result<String>;
     /// Ids of the running apps, in the form `focused_app` reports.
-    // Used by the settings window's exceptions picker (a later task).
-    #[allow(dead_code)]
     async fn running_apps(&self) -> Result<Vec<String>>;
     async fn selection_begin(&self) -> Result<bool>;
     /// Converts the clipboard; returns the input source id the text is now

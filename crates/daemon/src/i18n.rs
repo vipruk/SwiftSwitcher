@@ -65,6 +65,37 @@ pub enum Msg {
     Fix,
     FixFailed,
     Relogin,
+    HotkeyLastHint,
+    HotkeySelectionHint,
+    Change,
+    Reset,
+    PressShortcut,
+    PressShortcutHint,
+    ErrModifierOnly,
+    ErrUnsupportedKey,
+    ErrDuplicate,
+    Cancel,
+    HotkeysTip,
+    NeverConvert,
+    NeverConvertHint,
+    AlwaysConvert,
+    AlwaysConvertHint,
+    WordPlaceholder,
+    Remove,
+    ExcludedApps,
+    ExcludedAppsHint,
+    AppPlaceholder,
+    AddRunningApp,
+    RunningApps,
+    TypeAppId,
+    AddButton,
+    Version,
+    Website,
+    Privacy,
+    PrivacyReads,
+    PrivacyLocal,
+    PrivacyUinput,
+    Licenses,
 }
 
 #[cfg(test)]
@@ -106,6 +137,37 @@ impl Msg {
         Msg::Fix,
         Msg::FixFailed,
         Msg::Relogin,
+        Msg::HotkeyLastHint,
+        Msg::HotkeySelectionHint,
+        Msg::Change,
+        Msg::Reset,
+        Msg::PressShortcut,
+        Msg::PressShortcutHint,
+        Msg::ErrModifierOnly,
+        Msg::ErrUnsupportedKey,
+        Msg::ErrDuplicate,
+        Msg::Cancel,
+        Msg::HotkeysTip,
+        Msg::NeverConvert,
+        Msg::NeverConvertHint,
+        Msg::AlwaysConvert,
+        Msg::AlwaysConvertHint,
+        Msg::WordPlaceholder,
+        Msg::Remove,
+        Msg::ExcludedApps,
+        Msg::ExcludedAppsHint,
+        Msg::AppPlaceholder,
+        Msg::AddRunningApp,
+        Msg::RunningApps,
+        Msg::TypeAppId,
+        Msg::AddButton,
+        Msg::Version,
+        Msg::Website,
+        Msg::Privacy,
+        Msg::PrivacyReads,
+        Msg::PrivacyLocal,
+        Msg::PrivacyUinput,
+        Msg::Licenses,
     ];
 
     /// Proper names that read the same in every language.
@@ -191,6 +253,92 @@ pub fn tr(lang: Lang, m: Msg) -> &'static str {
         (Msg::FixFailed, Lang::Ru) => "Исправить не удалось",
         (Msg::Relogin, Lang::En) => "Log out and back in to finish",
         (Msg::Relogin, Lang::Ru) => "Чтобы завершить, выйдите из системы и войдите снова",
+        (Msg::HotkeyLastHint, Lang::En) => "Convert last word / undo correction",
+        (Msg::HotkeyLastHint, Lang::Ru) => "Исправить последнее слово / отменить исправление",
+        (Msg::HotkeySelectionHint, Lang::En) => "Convert the selected text",
+        (Msg::HotkeySelectionHint, Lang::Ru) => "Исправить выделенный текст",
+        (Msg::Change, Lang::En) => "Change",
+        (Msg::Change, Lang::Ru) => "Изменить",
+        (Msg::Reset, Lang::En) => "Reset",
+        (Msg::Reset, Lang::Ru) => "Сбросить",
+        (Msg::PressShortcut, Lang::En) => "Press the new shortcut",
+        (Msg::PressShortcut, Lang::Ru) => "Нажмите новое сочетание",
+        (Msg::PressShortcutHint, Lang::En) => "Esc cancels.",
+        (Msg::PressShortcutHint, Lang::Ru) => "Esc отменяет.",
+        (Msg::ErrModifierOnly, Lang::En) => {
+            "Press a key together with the modifiers, not modifiers alone"
+        }
+        (Msg::ErrModifierOnly, Lang::Ru) => {
+            "Нажмите клавишу вместе с модификаторами, а не одни модификаторы"
+        }
+        (Msg::ErrUnsupportedKey, Lang::En) => {
+            "This key is not supported. Use Pause, ScrollLock, Insert, Space, F1–F12 or a letter."
+        }
+        (Msg::ErrUnsupportedKey, Lang::Ru) => {
+            "Эта клавиша не поддерживается. Используйте Pause, ScrollLock, Insert, пробел, F1–F12 или букву."
+        }
+        (Msg::ErrDuplicate, Lang::En) => "The other command already uses this shortcut",
+        (Msg::ErrDuplicate, Lang::Ru) => "Это сочетание уже занято другой командой",
+        (Msg::Cancel, Lang::En) => "Cancel",
+        (Msg::Cancel, Lang::Ru) => "Отмена",
+        (Msg::HotkeysTip, Lang::En) => "No Pause key on your laptop? Try Ctrl+Alt+Space or F12.",
+        (Msg::HotkeysTip, Lang::Ru) => {
+            "Нет клавиши Pause на ноутбуке? Попробуйте Ctrl+Alt+Space или F12."
+        }
+        (Msg::NeverConvert, Lang::En) => "Never convert",
+        (Msg::NeverConvert, Lang::Ru) => "Никогда не исправлять",
+        (Msg::NeverConvertHint, Lang::En) => "Words typed exactly like this are left alone.",
+        (Msg::NeverConvertHint, Lang::Ru) => "Слова, набранные именно так, остаются как есть.",
+        (Msg::AlwaysConvert, Lang::En) => "Always convert",
+        (Msg::AlwaysConvert, Lang::Ru) => "Всегда исправлять",
+        (Msg::AlwaysConvertHint, Lang::En) => "Words typed exactly like this are always converted.",
+        (Msg::AlwaysConvertHint, Lang::Ru) => "Слова, набранные именно так, исправляются всегда.",
+        (Msg::WordPlaceholder, Lang::En) => "Add a word",
+        (Msg::WordPlaceholder, Lang::Ru) => "Добавить слово",
+        (Msg::Remove, Lang::En) => "Remove",
+        (Msg::Remove, Lang::Ru) => "Удалить",
+        (Msg::ExcludedApps, Lang::En) => "Excluded applications",
+        (Msg::ExcludedApps, Lang::Ru) => "Исключённые приложения",
+        (Msg::ExcludedAppsHint, Lang::En) => "Auto-correction is off while one of these has focus.",
+        (Msg::ExcludedAppsHint, Lang::Ru) => {
+            "Пока в фокусе одно из этих приложений, автоисправление отключено."
+        }
+        (Msg::AppPlaceholder, Lang::En) => "Add an application id",
+        (Msg::AppPlaceholder, Lang::Ru) => "Добавить идентификатор приложения",
+        (Msg::AddRunningApp, Lang::En) => "Add running app…",
+        (Msg::AddRunningApp, Lang::Ru) => "Добавить запущенное приложение…",
+        (Msg::RunningApps, Lang::En) => "Running applications",
+        (Msg::RunningApps, Lang::Ru) => "Запущенные приложения",
+        (Msg::TypeAppId, Lang::En) => "Or type an application id",
+        (Msg::TypeAppId, Lang::Ru) => "Или введите идентификатор приложения",
+        (Msg::AddButton, Lang::En) => "Add",
+        (Msg::AddButton, Lang::Ru) => "Добавить",
+        (Msg::Version, Lang::En) => "Version",
+        (Msg::Version, Lang::Ru) => "Версия",
+        (Msg::Website, Lang::En) => "Website",
+        (Msg::Website, Lang::Ru) => "Сайт",
+        (Msg::Privacy, Lang::En) => "Privacy",
+        (Msg::Privacy, Lang::Ru) => "Конфиденциальность",
+        (Msg::PrivacyReads, Lang::En) => {
+            "It reads all keyboard and pointer input, the id of the focused application, and the clipboard only while converting a selection."
+        }
+        (Msg::PrivacyReads, Lang::Ru) => {
+            "Программа читает весь ввод с клавиатуры и указателя, идентификатор активного приложения и буфер обмена только во время исправления выделенного текста."
+        }
+        (Msg::PrivacyLocal, Lang::En) => {
+            "SwiftSwitcher reads all keystrokes locally in order to work. Nothing typed is logged, stored or sent anywhere: there is no network code. The only files it writes are its config and the dictionary words you explicitly teach it."
+        }
+        (Msg::PrivacyLocal, Lang::Ru) => {
+            "SwiftSwitcher читает все нажатия клавиш локально, чтобы работать. Ничто из набранного не записывается в журнал, не сохраняется и никуда не отправляется: сетевого кода нет. Единственные файлы, которые программа пишет, это её настройки и слова словаря, которым вы её явно научили."
+        }
+        (Msg::PrivacyUinput, Lang::En) => {
+            "Device access is granted by a udev rule using the uaccess tag: the active desktop session gets read access to your keyboards, mice and touchpads, and write access to /dev/uinput. This is honest but broad: any program running in your active session can read those devices (see everything you type), and, through /dev/uinput, create a virtual keyboard that types into any window, not only SwiftSwitcher."
+        }
+        (Msg::PrivacyUinput, Lang::Ru) => {
+            "Доступ к устройствам даёт правило udev с тегом uaccess: активный сеанс получает право чтения ваших клавиатур, мышей и тачпадов и право записи в /dev/uinput. Это честно, но широко: любая программа в вашем активном сеансе может читать эти устройства (видеть всё, что вы набираете) и через /dev/uinput создавать виртуальную клавиатуру, которая печатает в любое окно, а не только в SwiftSwitcher."
+        }
+        (Msg::Licenses, Lang::En) => "Code: MIT. Data: CC-BY-SA-4.0.",
+        (Msg::Licenses, Lang::Ru) => "Код: MIT. Данные: CC-BY-SA-4.0.",
     }
 }
 

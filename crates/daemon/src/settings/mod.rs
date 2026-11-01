@@ -4,7 +4,12 @@
 //! `OnceLock`; the GTK thread awaits their `JoinHandle`s from
 //! `glib::spawn_future_local` and is never blocked.
 
+mod about;
+mod apps;
+mod dictionary;
 mod general;
+mod hotkeys;
+mod list;
 
 use crate::autostart;
 use crate::config::{Config, config_path};
@@ -190,8 +195,13 @@ impl Shell {
         for p in self.pages.borrow_mut().drain(..) {
             self.window.remove(&p);
         }
-        let mut pages = vec![general::page(self, lang)];
-        pages.extend(Page::ALL[1..].iter().map(|&p| stub_page(p, lang)));
+        let pages = vec![
+            general::page(self, lang),
+            hotkeys::page(self, lang),
+            dictionary::page(self, lang),
+            apps::page(self, lang),
+            about::page(self, lang),
+        ];
         for p in &pages {
             self.window.add(p);
         }
@@ -218,11 +228,6 @@ fn new_page(page: Page, lang: Lang) -> adw::PreferencesPage {
         .title(tr(lang, page.title()))
         .icon_name(page.icon())
         .build()
-}
-
-/// Pages filled in by later work.
-fn stub_page(page: Page, lang: Lang) -> adw::PreferencesPage {
-    new_page(page, lang)
 }
 
 fn build_window(app: &adw::Application) -> adw::PreferencesWindow {
