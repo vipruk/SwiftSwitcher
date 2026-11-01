@@ -27,9 +27,13 @@ SwiftSwitcher never grabs devices; your keyboard keeps working normally.
 
 ## Install
 
-### .deb (Ubuntu 24.04 or newer)
+### .deb
 
     sudo apt install ./swiftswitcher_<ver>_amd64.deb
+
+It currently works on GNOME 50 (Ubuntu 26.04, Wayland), because the extension
+targets GNOME Shell 50 only. The packages are built against Ubuntu 24.04
+libraries, but Ubuntu 24.04 (GNOME 46) and KDE support are planned, not done.
 
 Then open SwiftSwitcher from the app grid. The settings window runs the setup
 check, enables the GNOME extension and asks you to log out and back in once.
@@ -39,7 +43,8 @@ remove `~/.config/autostart/io.github.vipruk.SwiftSwitcher.desktop`.
 
 ### AppImage
 
-The AppImage needs Ubuntu 24.04 or newer. On first run it asks for a `pkexec`
+The AppImage takes GTK4 and libadwaita from the host system, so it needs a
+distribution that ships them (same GNOME 50 limitation as above). On first run it asks for a `pkexec`
 step to install the udev rule and the extension.
 
 ## Development install
