@@ -67,6 +67,8 @@ pub enum Msg {
     Relogin,
     HotkeyLastHint,
     HotkeySelectionHint,
+    HotkeyChangeCase,
+    HotkeyChangeCaseHint,
     Change,
     Reset,
     PressShortcut,
@@ -141,6 +143,8 @@ impl Msg {
         Msg::Relogin,
         Msg::HotkeyLastHint,
         Msg::HotkeySelectionHint,
+        Msg::HotkeyChangeCase,
+        Msg::HotkeyChangeCaseHint,
         Msg::Change,
         Msg::Reset,
         Msg::PressShortcut,
@@ -261,6 +265,14 @@ pub fn tr(lang: Lang, m: Msg) -> &'static str {
         (Msg::HotkeyLastHint, Lang::Ru) => "Исправить последнее слово / отменить исправление",
         (Msg::HotkeySelectionHint, Lang::En) => "Convert the selected text",
         (Msg::HotkeySelectionHint, Lang::Ru) => "Исправить выделенный текст",
+        (Msg::HotkeyChangeCase, Lang::En) => "Change case of selection",
+        (Msg::HotkeyChangeCase, Lang::Ru) => "Сменить регистр выделенного",
+        (Msg::HotkeyChangeCaseHint, Lang::En) => {
+            "Invert the case of each letter; the layout is not switched"
+        }
+        (Msg::HotkeyChangeCaseHint, Lang::Ru) => {
+            "Инвертировать регистр каждой буквы; раскладка не меняется"
+        }
         (Msg::Change, Lang::En) => "Change",
         (Msg::Change, Lang::Ru) => "Изменить",
         (Msg::Reset, Lang::En) => "Reset",

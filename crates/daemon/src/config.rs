@@ -10,6 +10,7 @@ pub struct Config {
     pub auto_correct: bool,
     pub convert_last: String,
     pub convert_selection: String,
+    pub change_case: String,
     pub excluded_apps: Vec<String>,
     pub terminal_apps: Vec<String>,
     pub idle_reset_secs: u64,
@@ -25,6 +26,7 @@ impl Default for Config {
             auto_correct: true,
             convert_last: "Pause".into(),
             convert_selection: "Shift+Pause".into(),
+            change_case: "Alt+Pause".into(),
             excluded_apps: s(&["org.keepassxc.KeePassXC", "bitwarden", "1password"]),
             terminal_apps: s(&[
                 "org.gnome.Terminal",
@@ -75,7 +77,7 @@ impl Config {
         std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))
     }
 
-    /// Parses both hotkeys. An unparsable one is an error; one that parses but
+    /// Parses the three hotkeys. An unparsable one is an error; one that parses but
     /// is unsafe to bind (it types text or is an app shortcut, see
     /// [`Hotkey::check_safe`]) falls back to that command's default with a
     /// warning, so a hand-edited config cannot turn typing into conversions.
@@ -102,6 +104,10 @@ impl Config {
                     &defaults.convert_selection,
                 )?,
                 HotkeyAction::ConvertSelection,
+            ),
+            (
+                parse("change_case", &self.change_case, &defaults.change_case)?,
+                HotkeyAction::ChangeCase,
             ),
         ])
     }
@@ -178,10 +184,13 @@ mod tests {
     #[test]
     fn default_hotkeys_parse() {
         let h = Config::default().hotkeys().unwrap();
-        assert_eq!(h.len(), 2);
+        assert_eq!(h.len(), 3);
         assert_eq!(h[0].1, HotkeyAction::ConvertLast);
         assert_eq!(h[1].1, HotkeyAction::ConvertSelection);
         assert!(h[1].0.shift);
+        assert_eq!(h[2].1, HotkeyAction::ChangeCase);
+        assert_eq!(h[2].0, Hotkey::parse("Alt+Pause").unwrap());
+        assert_eq!(h[2].0.check_safe(), Ok(()));
     }
 
     #[test]
@@ -189,9 +198,11 @@ mod tests {
         let c = Config {
             convert_last: "a".into(),
             convert_selection: "Ctrl+C".into(),
+            change_case: "b".into(),
             ..Config::default()
         };
         let h = c.hotkeys().unwrap();
+        assert_eq!(h[2].0, Hotkey::parse("Alt+Pause").unwrap());
         assert_eq!(h[0].0, Hotkey::parse("Pause").unwrap());
         assert_eq!(h[1].0, Hotkey::parse("Shift+Pause").unwrap());
         let c = Config {

@@ -18,6 +18,9 @@ pub trait Desktop {
     /// Converts the clipboard; returns the input source id the text is now
     /// in, or "" if nothing was converted.
     async fn selection_convert(&self) -> Result<String>;
+    /// Inverts the case of the clipboard text in place; false if there was
+    /// nothing to change.
+    async fn selection_change_case(&self) -> Result<bool>;
     async fn selection_end(&self) -> Result<bool>;
 }
 
@@ -34,6 +37,7 @@ trait Shell {
     fn list_running_apps(&self) -> zbus::Result<Vec<String>>;
     fn selection_begin(&self) -> zbus::Result<bool>;
     fn selection_convert(&self) -> zbus::Result<String>;
+    fn selection_change_case(&self) -> zbus::Result<bool>;
     fn selection_end(&self) -> zbus::Result<bool>;
 }
 
@@ -90,6 +94,9 @@ impl Desktop for GnomeDesktop {
     }
     async fn selection_convert(&self) -> Result<String> {
         call(self.proxy.selection_convert()).await
+    }
+    async fn selection_change_case(&self) -> Result<bool> {
+        call(self.proxy.selection_change_case()).await
     }
     async fn selection_end(&self) -> Result<bool> {
         call(self.proxy.selection_end()).await

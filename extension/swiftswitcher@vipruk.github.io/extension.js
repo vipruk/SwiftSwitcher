@@ -12,6 +12,7 @@ import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 import * as KeyboardManager from 'resource:///org/gnome/shell/misc/keyboardManager.js';
 
 import {appIdOf, uniqueAppIds} from './appid.js';
+import {invertCase} from './case.js';
 import {ClipboardSaver, isWholeLineCopy} from './clipboard.js';
 import {convertText, targetSource} from './keymap.js';
 
@@ -42,6 +43,9 @@ const IFACE_XML = `
     </method>
     <method name="SelectionConvert">
       <arg type="s" direction="out" name="target"/>
+    </method>
+    <method name="SelectionChangeCase">
+      <arg type="b" direction="out" name="changed"/>
     </method>
     <method name="SelectionEnd">
       <arg type="b" direction="out" name="ok"/>
@@ -190,6 +194,24 @@ class ShellBridge {
         } catch (e) {
             console.error(`SwiftSwitcher: SelectionConvert failed: ${e.name}`);
             returnString(invocation, '');
+        }
+    }
+
+    // Inverts the case of the copied text in place; the layout is not
+    // switched. Returns false if there was nothing to change (then the
+    // daemon does not paste).
+    async SelectionChangeCaseAsync(_params, invocation) {
+        try {
+            const text = await readClipboard();
+            if (!text || isWholeLineCopy(text)) {
+                returnBoolean(invocation, false);
+                return;
+            }
+            writeClipboard(invertCase(text));
+            returnBoolean(invocation, true);
+        } catch (e) {
+            console.error(`SwiftSwitcher: SelectionChangeCase failed: ${e.name}`);
+            returnBoolean(invocation, false);
         }
     }
 

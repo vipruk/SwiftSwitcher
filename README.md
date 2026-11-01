@@ -95,6 +95,8 @@ Defaults, configurable:
   (`learn_after_undos`), it is remembered and no longer corrected.
 - `Shift+Pause`: convert the selected text between layouts and switch to the
   layout the text is now in.
+- `Alt+Pause`: change the case of the selected text: every letter is inverted
+  (`пРИВЕТ` becomes `Привет`). The layout is not switched.
 
 Hotkeys also work in `excluded_apps`; only automatic correction is off there.
 
@@ -111,6 +113,7 @@ and `swiftswitcher check` say so.
 | `auto_correct` | `true` | Correct wrong-layout words automatically |
 | `convert_last` | `"Pause"` | Hotkey: convert the last word |
 | `convert_selection` | `"Shift+Pause"` | Hotkey: convert the selection |
+| `change_case` | `"Alt+Pause"` | Hotkey: change the case of the selection |
 | `excluded_apps` | password managers | App ids where nothing is corrected automatically (hotkeys still work) |
 | `terminal_apps` | common terminals | App ids that use terminal paste/copy shortcuts |
 | `idle_reset_secs` | `5` | Pause after which the typed word is forgotten |

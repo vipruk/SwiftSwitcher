@@ -25,6 +25,7 @@ pub enum Unsafe {
 pub enum HotkeyAction {
     ConvertLast,
     ConvertSelection,
+    ChangeCase,
 }
 
 impl Hotkey {
@@ -151,6 +152,13 @@ fn key_code(name: &str) -> Result<KeyCode, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alt_pause_is_safe() {
+        let h = Hotkey::parse("Alt+Pause").unwrap();
+        assert!(h.alt && h.code == 119);
+        assert_eq!(h.check_safe(), Ok(()));
+    }
 
     #[test]
     fn parses_plain_and_modified() {

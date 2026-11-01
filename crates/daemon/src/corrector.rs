@@ -345,6 +345,7 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             Some(TrackerEvent::Hotkey(HotkeyAction::ConvertSelection)) => {
                 self.convert_selection().await
             }
+            Some(TrackerEvent::Hotkey(HotkeyAction::ChangeCase)) => self.change_case().await,
             None => Ok(()),
         }
     }
@@ -643,6 +644,23 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
         let Some(from) = self.supported_layout().await else {
             return Ok(());
         };
+        self.selection_cycle(SelectionOp::Convert, from).await
+    }
+
+    /// Inverts the case of the selected text in place; the layout is kept.
+    async fn change_case(&mut self) -> Result<()> {
+        self.last_correction = None;
+        if !self.wait_modifiers_released().await || !self.quiet() {
+            return Ok(());
+        }
+        // The layout is only reported in logs here; any layout works.
+        self.selection_cycle(SelectionOp::ChangeCase, Layout::En)
+            .await
+    }
+
+    /// Begin, copy, transform the clipboard, paste, End. `from` is the
+    /// current layout (for logs).
+    async fn selection_cycle(&mut self, op: SelectionOp, from: Layout) -> Result<()> {
         let Some(app) = self.focused_app().await else {
             return Ok(());
         };
@@ -663,9 +681,9 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             }
         };
         let pasted = if begun {
-            self.copy_convert_paste(mods).await
+            self.copy_transform_paste(mods, op).await
         } else {
-            Ok(None)
+            Ok(Pasted::No)
         };
         // Always, even when Begin failed or timed out: the extension may have
         // saved the clipboard after all, and End is what restores it.
@@ -673,7 +691,15 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
             log::warn!("cannot end selection convert: {e:#}");
         }
         // Switch to the layout the converted text is now in.
-        if let Some(to) = pasted? {
+        let to = match pasted? {
+            Pasted::Layout(to) => Some(to),
+            Pasted::Kept => {
+                log::info!("changed case of the selection");
+                return Ok(());
+            }
+            Pasted::No => None,
+        };
+        if let Some(to) = to {
             match self.desktop.set_layout(source_id(to)).await {
                 Ok(true) => log::info!("converted selection; input source {}", source_id(to)),
                 Ok(false) => log::warn!("input source {} was refused", source_id(to)),
@@ -688,37 +714,70 @@ impl<D: Desktop, I: Injector> Corrector<D, I> {
         Ok(())
     }
 
-    /// Copy, convert the clipboard, paste. Returns the layout of the pasted
-    /// text iff it pasted.
-    async fn copy_convert_paste(&mut self, mods: &[KeyCode]) -> Result<Option<Layout>> {
+    /// Copy, transform the clipboard, paste.
+    async fn copy_transform_paste(&mut self, mods: &[KeyCode], op: SelectionOp) -> Result<Pasted> {
         if !self.wait_keys_released().await || !self.quiet() {
-            return Ok(None);
+            return Ok(Pasted::No);
         }
         self.injector.chord(mods, KEY_C)?;
         sleep(COPY_WAIT).await;
-        let target = match self.desktop.selection_convert().await {
-            Ok(id) if id.is_empty() => {
-                log::debug!("nothing to convert in the selection");
-                return Ok(None);
-            }
-            Ok(id) => Layout::from_source_id(&id),
-            Err(e) => {
-                log::warn!("cannot convert selection: {e:#}");
-                return Ok(None);
-            }
-        };
-        let Some(target) = target else {
-            log::warn!("selection converted to an unknown layout; not pasting");
-            return Ok(None);
+        let pasted = match op {
+            SelectionOp::Convert => match self.desktop.selection_convert().await {
+                Ok(id) if id.is_empty() => {
+                    log::debug!("nothing to convert in the selection");
+                    return Ok(Pasted::No);
+                }
+                Ok(id) => match Layout::from_source_id(&id) {
+                    Some(to) => Pasted::Layout(to),
+                    None => {
+                        log::warn!("selection converted to an unknown layout; not pasting");
+                        return Ok(Pasted::No);
+                    }
+                },
+                Err(e) => {
+                    log::warn!("cannot convert selection: {e:#}");
+                    return Ok(Pasted::No);
+                }
+            },
+            SelectionOp::ChangeCase => match self.desktop.selection_change_case().await {
+                Ok(true) => Pasted::Kept,
+                Ok(false) => {
+                    log::debug!("nothing to change in the selection");
+                    return Ok(Pasted::No);
+                }
+                Err(e) => {
+                    log::warn!("cannot change case of selection: {e:#}");
+                    return Ok(Pasted::No);
+                }
+            },
         };
         if !self.wait_keys_released().await || !self.quiet() {
-            log::debug!("input arrived during selection convert; not pasting");
-            return Ok(None);
+            log::debug!("input arrived during the selection command; not pasting");
+            return Ok(Pasted::No);
         }
         self.injector.chord(mods, KEY_V)?;
         sleep(PASTE_WAIT).await;
-        Ok(Some(target))
+        Ok(pasted)
     }
+}
+
+/// What the selection command does to the copied text.
+#[derive(Clone, Copy)]
+enum SelectionOp {
+    /// Convert between layouts and switch to the text's new layout.
+    Convert,
+    /// Invert the case of each letter; the layout is kept.
+    ChangeCase,
+}
+
+/// The outcome of a selection command's paste.
+enum Pasted {
+    /// Nothing was pasted.
+    No,
+    /// Pasted, now in this layout.
+    Layout(Layout),
+    /// Pasted; the layout stays.
+    Kept,
 }
 
 #[cfg(test)]
@@ -765,6 +824,8 @@ mod tests {
         /// What SelectionConvert returns: the target id, "" = not converted.
         convert_target: String,
         begin_fails: bool,
+        /// What SelectionChangeCase returns.
+        change_case_ok: bool,
     }
 
     impl FakeDesktop {
@@ -814,6 +875,10 @@ mod tests {
         async fn selection_convert(&self) -> Result<String> {
             self.call("selection_convert");
             Ok(self.convert_target.clone())
+        }
+        async fn selection_change_case(&self) -> Result<bool> {
+            self.call("selection_change_case");
+            Ok(self.change_case_ok)
         }
         async fn selection_end(&self) -> Result<bool> {
             self.call("selection_end");
@@ -879,6 +944,7 @@ mod tests {
         switch: Switch,
         convert_target: &'static str,
         begin_fails: bool,
+        change_case_ok: bool,
         pointer: bool,
         config: Config,
     }
@@ -891,6 +957,7 @@ mod tests {
                 switch: Switch::Now,
                 convert_target: "ru",
                 begin_fails: false,
+                change_case_ok: true,
                 pointer: true,
                 config: Config::default(),
             }
@@ -909,6 +976,7 @@ mod tests {
             switch: s.switch,
             convert_target: s.convert_target.into(),
             begin_fails: s.begin_fails,
+            change_case_ok: s.change_case_ok,
         };
         let injector = FakeInjector {
             log: log.clone(),
@@ -950,6 +1018,7 @@ mod tests {
             switch: Switch::Now,
             convert_target: "ru".into(),
             begin_fails: false,
+            change_case_ok: true,
         };
         let injector = FakeInjector {
             log: r.log.clone(),
@@ -1436,6 +1505,64 @@ mod tests {
         let u = &r.c.dict.undos;
         assert_eq!((u["a"], u["b"], u["c"]), (2, 4, 1));
         assert!(r.c.dict.never.contains("x"));
+    }
+
+    // ---- Alt+Pause: change case of the selection ----
+
+    const KEY_ALT: KeyCode = 56;
+
+    async fn alt_pause(r: &mut Rig) {
+        r.key(KEY_ALT, 1).await;
+        let pause = key_input(KEY_PAUSE, 1);
+        let seq = r.activity.observe(&pause, &r.hotkeys);
+        let (a, hk) = (r.activity.clone(), r.hotkeys.clone());
+        let (res, ()) = tokio::join!(r.c.handle(stamped(pause, seq)), async move {
+            sleep(Duration::from_millis(50)).await;
+            a.observe(&key_input(KEY_PAUSE, 0), &hk);
+            a.observe(&key_input(KEY_ALT, 0), &hk);
+        });
+        res.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn change_case_copies_changes_and_pastes_without_switching() {
+        let mut r = rig(Setup::default());
+        alt_pause(&mut r).await;
+        assert_eq!(
+            r.ops(),
+            vec![Op::Chord(vec![29], 46), Op::Chord(vec![29], 47)]
+        );
+        assert_eq!(
+            r.calls(),
+            strings(&["selection_begin", "selection_change_case", "selection_end"])
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn change_case_false_skips_paste() {
+        let mut r = rig(Setup {
+            change_case_ok: false,
+            ..Setup::default()
+        });
+        alt_pause(&mut r).await;
+        assert_eq!(r.ops(), vec![Op::Chord(vec![29], 46)]);
+        assert_eq!(
+            r.calls(),
+            strings(&["selection_begin", "selection_change_case", "selection_end"])
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn change_case_in_terminal_uses_shifted_chords() {
+        let mut r = rig(Setup {
+            app: "org.gnome.Ptyxis",
+            ..Setup::default()
+        });
+        alt_pause(&mut r).await;
+        assert_eq!(
+            r.ops(),
+            vec![Op::Chord(vec![29, 42], 46), Op::Chord(vec![29, 42], 47)]
+        );
     }
 
     // ---- Shift+Pause: selection convert ----

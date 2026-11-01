@@ -1,4 +1,4 @@
-//! The Hotkeys page: the two commands, their bindings and a capture dialog.
+//! The Hotkeys page: the three commands, their bindings and a capture dialog.
 
 use super::{Page, Shell, new_page, update_config};
 use crate::config::{Config, config_path};
@@ -55,24 +55,31 @@ pub(super) fn conflicts(new: &Hotkey, other: &str) -> bool {
     Hotkey::parse(other).is_ok_and(|o| o == *new)
 }
 
-/// Whether resetting to `default` would duplicate the other command's binding.
-fn reset_conflicts(default: &str, other: &str) -> bool {
-    Hotkey::parse(default).is_ok_and(|h| conflicts(&h, other))
+/// Whether `new` equals any of the other commands' bindings.
+pub(super) fn conflicts_any<S: AsRef<str>>(new: &Hotkey, others: &[S]) -> bool {
+    others.iter().any(|o| conflicts(new, o.as_ref()))
+}
+
+/// Whether resetting to `default` would duplicate another command's binding.
+fn reset_conflicts<S: AsRef<str>>(default: &str, others: &[S]) -> bool {
+    Hotkey::parse(default).is_ok_and(|h| conflicts_any(&h, others))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Command {
     Last,
     Selection,
+    ChangeCase,
 }
 
 impl Command {
-    const ALL: [Command; 2] = [Command::Last, Command::Selection];
+    const ALL: [Command; 3] = [Command::Last, Command::Selection, Command::ChangeCase];
 
     fn title(self) -> Msg {
         match self {
             Command::Last => Msg::HotkeyLastHint,
             Command::Selection => Msg::ConvertSelection,
+            Command::ChangeCase => Msg::HotkeyChangeCase,
         }
     }
 
@@ -80,6 +87,7 @@ impl Command {
         match self {
             Command::Last => None,
             Command::Selection => Some(Msg::HotkeySelectionHint),
+            Command::ChangeCase => Some(Msg::HotkeyChangeCaseHint),
         }
     }
 
@@ -87,6 +95,7 @@ impl Command {
         match self {
             Command::Last => &mut c.convert_last,
             Command::Selection => &mut c.convert_selection,
+            Command::ChangeCase => &mut c.change_case,
         }
     }
 
@@ -94,14 +103,17 @@ impl Command {
         match self {
             Command::Last => &c.convert_last,
             Command::Selection => &c.convert_selection,
+            Command::ChangeCase => &c.change_case,
         }
     }
 
-    fn other(self) -> Command {
-        match self {
-            Command::Last => Command::Selection,
-            Command::Selection => Command::Last,
-        }
+    /// The bindings of every other command in `c`.
+    fn others(self, c: &Config) -> Vec<String> {
+        Command::ALL
+            .into_iter()
+            .filter(|o| *o != self)
+            .map(|o| o.get(c).to_string())
+            .collect()
     }
 }
 
@@ -170,7 +182,7 @@ pub(super) fn page(shell: &Shell, lang: Lang) -> adw::PreferencesPage {
         reset.connect_clicked(move |_| {
             let mut default = Config::default();
             let value = command.field(&mut default).clone();
-            if reset_conflicts(&value, command.other().get(&fresh_config())) {
+            if reset_conflicts(&value, &command.others(&fresh_config())) {
                 s.toast(tr(lang, Msg::ErrDuplicate));
                 return;
             }
@@ -245,8 +257,8 @@ fn open_capture(
                 CaptureError::Unsafe(Unsafe::AppShortcut) => Msg::ErrAppShortcut,
             })
             .and_then(|h| {
-                let other = command.other().get(&fresh_config()).to_string();
-                if conflicts(&h, &other) {
+                let others = command.others(&fresh_config());
+                if conflicts_any(&h, &others) {
                     Err(Msg::ErrDuplicate)
                 } else {
                     Ok(h)
@@ -366,9 +378,28 @@ mod tests {
     #[test]
     fn reset_refuses_conflict() {
         // Selection is "Pause", Last's default is "Pause": refused.
-        assert!(reset_conflicts("Pause", "Pause"));
-        // Normal reset: Last is F12 now, Selection is the default Shift+Pause.
-        assert!(!reset_conflicts("Pause", "Shift+Pause"));
-        assert!(!reset_conflicts("Shift+Pause", "F12"));
+        assert!(reset_conflicts("Pause", &["Pause", "Alt+Pause"]));
+        // The third command holds it: refused too.
+        assert!(reset_conflicts("Pause", &["Shift+Pause", "Pause"]));
+        // Normal reset: Last is F12 now, the others are their defaults.
+        assert!(!reset_conflicts("Pause", &["Shift+Pause", "Alt+Pause"]));
+        assert!(!reset_conflicts("Shift+Pause", &["F12", "Alt+Pause"]));
+    }
+
+    #[test]
+    fn duplicate_check_covers_every_other_command() {
+        let c = Config::default();
+        let alt_pause = capture(
+            127,
+            Mods {
+                alt: true,
+                ..Mods::default()
+            },
+        )
+        .unwrap();
+        assert!(conflicts_any(&alt_pause, &Command::Last.others(&c)));
+        assert!(conflicts_any(&alt_pause, &Command::Selection.others(&c)));
+        assert!(!conflicts_any(&alt_pause, &Command::ChangeCase.others(&c)));
+        assert_eq!(Command::ChangeCase.others(&c).len(), 2);
     }
 }
