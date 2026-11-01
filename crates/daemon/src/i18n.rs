@@ -297,10 +297,8 @@ pub fn tr(lang: Lang, m: Msg) -> &'static str {
         (Msg::ErrDuplicate, Lang::Ru) => "Это сочетание уже занято другой командой",
         (Msg::Cancel, Lang::En) => "Cancel",
         (Msg::Cancel, Lang::Ru) => "Отмена",
-        (Msg::HotkeysTip, Lang::En) => "No Pause key on your laptop? Try Ctrl+Alt+Space or F12.",
-        (Msg::HotkeysTip, Lang::Ru) => {
-            "Нет клавиши Pause на ноутбуке? Попробуйте Ctrl+Alt+Space или F12."
-        }
+        (Msg::HotkeysTip, Lang::En) => "No Pause key on your laptop? Try Ctrl+Alt+Space.",
+        (Msg::HotkeysTip, Lang::Ru) => "Нет клавиши Pause на ноутбуке? Попробуйте Ctrl+Alt+Space.",
         (Msg::NeverConvert, Lang::En) => "Never convert",
         (Msg::NeverConvert, Lang::Ru) => "Никогда не исправлять",
         (Msg::NeverConvertHint, Lang::En) => "Words typed exactly like this are left alone.",
