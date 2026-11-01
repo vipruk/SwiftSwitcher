@@ -44,8 +44,14 @@ remove `~/.config/autostart/io.github.vipruk.SwiftSwitcher.desktop`.
 ### AppImage
 
 The AppImage takes GTK4 and libadwaita from the host system, so it needs a
-distribution that ships them (same GNOME 50 limitation as above). On first run it asks for a `pkexec`
-step to install the udev rule and the extension.
+distribution that ships them (Ubuntu 24.04 or newer). The desktop target is still
+GNOME 50 on Ubuntu 26.04, as above.
+
+1. Download `SwiftSwitcher-<version>-x86_64.AppImage` from the releases page.
+2. `chmod +x SwiftSwitcher-*-x86_64.AppImage`
+3. Run it. The first run opens the settings window, which offers a `pkexec` step
+   to install the udev rule and a button to install the GNOME extension. Log out
+   and back in once afterwards.
 
 ## Development install
 

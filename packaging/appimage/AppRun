@@ -1,0 +1,8 @@
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+APPDIR="${APPDIR:-$HERE}"
+export APPDIR
+if [ "$#" -eq 0 ]; then
+    exec "$HERE/usr/bin/swiftswitcher" settings
+fi
+exec "$HERE/usr/bin/swiftswitcher" "$@"
